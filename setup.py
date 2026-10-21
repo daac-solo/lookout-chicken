@@ -14,7 +14,14 @@ Then sign with a stable identifier so the grant survives rebuilds — see
 NOTES.md, this one bites hard.
 """
 
+from pathlib import Path
+
 from setuptools import setup
+
+# Single source of truth: the tag, the changelog heading and the bundle all
+# read this file, so a release cannot ship a version that disagrees with
+# the one it claims.
+VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
 
 APP = ["chicken.py"]
 ICON = "AppIcon.icns"
@@ -26,8 +33,8 @@ OPTIONS = {
         "CFBundleName": "Lookout Chicken",
         "CFBundleDisplayName": "Lookout Chicken",
         "CFBundleIdentifier": "com.lookoutchicken.app",
-        "CFBundleShortVersionString": "1.0",
-        "CFBundleVersion": "1.0",
+        "CFBundleShortVersionString": VERSION,
+        "CFBundleVersion": VERSION,
         # Menu bar only: no Dock tile, no app switcher entry.
         "LSUIElement": True,
         "NSHumanReadableCopyright": "",

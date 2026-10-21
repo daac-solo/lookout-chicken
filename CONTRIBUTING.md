@@ -33,3 +33,31 @@ launches the bundled binary to see whether it survives eight seconds.
 That last one is the check worth keeping. Two builds in this project's short
 history crashed on launch while everything else passed, because a menu bar
 app's failures are visual and the bundle swallows the traceback.
+
+## Versions
+
+Every change lands in [CHANGELOG.md](CHANGELOG.md) before it is released,
+under **Added**, **Changed**, **Fixed** or **Removed**. Write the entry for
+somebody deciding whether to upgrade: what is different, and where it is not
+obvious, why it was wrong before.
+
+Cutting a release:
+
+```bash
+# 1. move the version
+echo "0.2.0" > VERSION
+
+# 2. CHANGELOG.md: turn [Unreleased] into the new heading with today's date
+# 3. commit, then tag and publish
+git commit -am "Release 0.2.0"
+git tag -a v0.2.0 -m "0.2.0"
+git push && git push --tags
+gh release create v0.2.0 --title "0.2.0" --notes-file <(sed -n '/## \[0.2.0\]/,/## \[0.1/p' CHANGELOG.md | sed '$d')
+```
+
+`VERSION` is the only place the number lives — `setup.py` reads it into the
+bundle, so a build can never claim a version the tag does not match.
+
+The minor number moves when behaviour changes, the patch number when
+something is repaired. Before `1.0.0` neither promises compatibility, but
+the changelog still has to say what moved.
