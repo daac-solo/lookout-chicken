@@ -28,6 +28,10 @@ def fetch(cfg=None):
             ],
         },
         "sparks": {"hot": 4},
+        # Lands in the "hungry" band, so a fresh clone shows the mood the
+        # chick spends most of its life in rather than a permanent grin.
+        # It is static, so the demo chick never actually gets fed.
+        "fedHoursAgo": 11.0,
         "library": 141,
         "shelf": 0,
         "demo": True,

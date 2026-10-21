@@ -167,3 +167,29 @@ A panel at desktop level is hidden by the first window that covers it, which
 defeats an ambient reminder entirely. `NSFloatingWindowLevel` sits above
 ordinary windows without stealing focus. The island needs
 `NSStatusWindowLevel + 1` to clear the menu bar.
+
+---
+
+## A borderless window keeps its old shadow
+
+Resize a transparent `NSWindow` and AppKit keeps drawing the shadow outline
+of the *previous* frame. On a rounded card that shows up as grey square
+corners floating outside the rounded edge — which looks exactly like a corner
+mask bug, so it is easy to spend an afternoon fixing the wrong thing.
+
+```python
+self.panel.setFrame_display_(new_frame, True)
+...
+self.panel.invalidateShadow()   # after every frame change
+```
+
+The corner mask is a separate, real problem: a child layer with square
+corners paints past a rounded parent unless the parent masks it.
+
+```python
+blur.setWantsLayer_(True)
+blur.layer().setMasksToBounds_(True)
+```
+
+Both are needed. Fixing one and declaring victory is how this got reported
+twice.

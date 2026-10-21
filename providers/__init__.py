@@ -8,10 +8,11 @@ See PROVIDERS.md for the shape. Every field is optional — the widget skips
 sections it has no data for, so a provider can return as little as one key.
 """
 
-from . import demo, http
+from . import demo, folder, http
 
 _BY_NAME = {
     "demo": demo,
+    "folder": folder,
     "http": http,
 }
 

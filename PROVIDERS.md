@@ -34,9 +34,63 @@ for, so a provider returning a single key is valid — it just shows less.
   "library": 141,
 
   // Items staged locally but not yet filed.
-  "shelf": 0
+  "shelf": 0,
+
+  // Hours since anything last went into the system. This is the only field
+  // the chick's own state reads from: under 0.5 it is fed and lively, under
+  // 6 settled, under 24 hungry, beyond that droopy. Omit it and the chick
+  // stays neutral — better than a provider that cannot tell and so implies
+  // neglect.
+  "fedHoursAgo": 11.0
 }
 ```
+
+## The `folder` provider
+
+Reads a directory of markdown files and computes the numbers itself. No
+server, no network, no plugin. It only ever reads — it never writes to your
+files.
+
+```jsonc
+{
+  "provider": "folder",
+  "folder": {
+    "path": "~/Documents/Notes",
+    "ready_states": ["ready", "scheduled", "done"],
+    "spark_states": ["idea", "spark", "draft"],
+    "ignore": ["templates", "archive", ".obsidian"]
+  }
+}
+```
+
+| key | meaning |
+| --- | --- |
+| `path` | the folder to scan, recursively. `~` is expanded. |
+| `ready_states` | frontmatter `status:` (or `state:`) values that mean "finished". Set these to whatever you already write. |
+| `spark_states` | values that mean "a half-thought". Counted in `sparks.hot` only if the file changed in the last three days. |
+| `ignore` | directory names skipped anywhere in the tree. Dotfolders and dotfiles are always skipped. |
+
+How each field is derived:
+
+- **`ready`** — files whose state is in `ready_states`. `oldestDays` is today
+  minus the earliest `date:` or `created:` among them; a date that will not
+  parse counts as zero days rather than throwing the scan away. `items` carry
+  the path relative to `path` without its extension as `id`, and `title:`,
+  else the first `# heading`, else the filename as `title`. Oldest first.
+- **`library`** — every `.md` file scanned, classified or not.
+- **`sparks.hot`** — `spark_states` files modified within three days.
+- **`fedHoursAgo`** — hours since the newest mtime in the tree. It reads
+  mtime rather than scan time on purpose: a refresh is not a meal.
+- **`distill`** — not reported. It describes one person's daily writing
+  habit, and the widget skips the section when it is absent.
+
+Only the frontmatter is parsed, and only a small subset of YAML: `key: value`,
+quoted values, and `[a, b]` lists. A file with no frontmatter still counts
+toward `library` but cannot be classified.
+
+The scan is cached and only repeats when the newest mtime in the tree changes,
+so pointing it at a large vault does not cost anything on every refresh. A
+path that does not exist returns zeros, not an error.
 
 ## Endpoints (the `http` provider)
 

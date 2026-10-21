@@ -23,9 +23,25 @@ SHELF_FILE = STATE_DIR / "shelf.json"
 CMD_FILE = STATE_DIR / "cmd"
 
 DEFAULTS = {
-    # "demo" needs nothing and shows sample data.
-    # "http" calls `http.url` and expects the JSON contract in PROVIDERS.md.
+    # "demo"   needs nothing and shows sample data.
+    # "folder" reads a directory of markdown files and counts them itself.
+    # "http"   calls `http.base_url` and expects the contract in PROVIDERS.md.
     "provider": "demo",
+
+    "folder": {
+        # The only setting that matters. Point it at a vault or any folder of
+        # markdown; ~ is expanded. It is only ever read, never written.
+        "path": "~/Documents/Notes",
+        # Frontmatter `status:` (or `state:`) values that mean "finished".
+        # Change these to whatever you already write rather than re-tagging
+        # a vault to suit the widget.
+        "ready_states": ["ready", "scheduled", "done"],
+        # Values that mean "a half-thought, still warm".
+        "spark_states": ["idea", "spark", "draft"],
+        # Directory names to skip anywhere in the tree. Dotfolders are
+        # always skipped.
+        "ignore": ["templates", "archive", ".obsidian"],
+    },
 
     "http": {
         "base_url": "http://localhost:3456",

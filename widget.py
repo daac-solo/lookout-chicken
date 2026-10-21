@@ -71,6 +71,27 @@ ALERT = _c(0.769, 0.322, 0.165)      # terracotta, not a siren red
 CALM = _c(0.361, 0.478, 0.361)
 GOLD = _c(0.769, 0.659, 0.510)
 
+# How long since anything went into the system. The companion wears this:
+# fed and lively, settled, hungry, or droopy. It is the one state it has that
+# the user can actually change, which is what makes feeding it mean something.
+MOODS = [
+    (0.5,  "fed"),
+    (6.0,  "ok"),
+    (24.0, "hungry"),
+    (1e9,  "droopy"),
+]
+
+
+def mood_for(hours):
+    """Providers that cannot tell how stale the data is simply omit the
+    field; a neutral mood is better than inventing neglect."""
+    if hours is None:
+        return "ok"
+    for limit, name in MOODS:
+        if hours < limit:
+            return name
+    return "droopy"
+
 # The notch is pure black; the pill has to match it exactly or the seam shows.
 NOTCH_BLACK = _c(0.0, 0.0, 0.0)
 ISLAND_INK = _c(0.93, 0.92, 0.90)
@@ -157,6 +178,8 @@ class Widget(NSObject):
         self.glass = False
         self.targets = []   # (y_low, y_high, route)
         self.last_data = None
+        self.mood = "ok"
+        self.card_chick = None
         return self
 
     # --- window ---
@@ -195,6 +218,10 @@ class Widget(NSObject):
             blur = AppKit.NSGlassEffectView.alloc().initWithFrame_(
                 NSMakeRect(0, 0, W, 200))
             blur.setCornerRadius_(20)
+            blur.setWantsLayer_(True)
+            # Without the mask, a child layer's square corner paints past the
+            # rounded glass edge.
+            blur.layer().setMasksToBounds_(True)
             # Glass is the container, not the background. Text needs a ground
             # of its own, or a busy wallpaper reads straight through it.
             try:
@@ -380,8 +407,12 @@ class Widget(NSObject):
             label.setFrame_(
                 NSMakeRect(text_x, (ISLAND_H - 16) / 2, w - text_x - 14, 16))
             self.sheet.addSubview_(label)
+        # A borderless window keeps the shadow outline of its previous frame.
+        # Without this the old square corners stay painted outside the pill.
+        self.panel.invalidateShadow()
 
         self._attach_pet_handlers()
+        self.panel.invalidateShadow()
 
     @objc.python_method
     def to_island(self):
@@ -443,25 +474,201 @@ class Widget(NSObject):
 
     @objc.python_method
     def breathe(self):
-        """A barely-there idle loop. Perceptible as life, not as motion."""
+        """The ball's own breath. Shares the curve the card uses so both read
+        as the same creature: a long inhale, a held top, a slower release."""
         layer = self.sheet.layer()
         # Compare to None explicitly: truth-testing an ObjC object makes
         # PyObjC probe -length, which CABasicAnimation does not implement.
         if layer is None or layer.animationForKey_("breathe") is not None:
             return
         import Quartz
-        a = Quartz.CABasicAnimation.animationWithKeyPath_("transform.scale")
-        a.setFromValue_(1.0)
-        a.setToValue_(1.015)
-        a.setDuration_(1.6)
-        a.setAutoreverses_(True)
-        a.setRepeatCount_(1e9)
-        a.setTimingFunction_(
-            Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut"))
+        layer.setAnchorPoint_(AppKit.NSMakePoint(0.5, 0.42))
+        scale = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.scale")
+        scale.setValues_([1.0, 1.055, 1.045, 1.0, 1.0])
+        scale.setKeyTimes_([0, 0.30, 0.46, 0.80, 1.0])
+        ease = Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut")
+        scale.setTimingFunctions_([ease, ease, ease, ease])
+        scale.setDuration_(2.6)
+        scale.setRepeatCount_(1e9)
         # addAnimation:forKey: — animation first. Reversing these passes a
         # string where CoreAnimation wants an animation and crashes on
         # -[__NSCFString length] deep inside AppKit.
-        layer.addAnimation_forKey_(a, "breathe")
+        layer.addAnimation_forKey_(scale, "breathe")
+
+    @objc.python_method
+    def breathe_view(self, view):
+        """The card's breath. The whole surface rises and settles; a lone
+        corner glyph pulsing instead would read as a loading indicator."""
+        layer = view.layer()
+        if layer is None or layer.animationForKey_("breathe") is not None:
+            return
+        import Quartz
+        # Anchored at the bottom edge, so it lifts off the desk rather than
+        # swelling in both directions.
+        layer.setAnchorPoint_(AppKit.NSMakePoint(0.5, 0.0))
+        group = Quartz.CAAnimationGroup.animation()
+
+        scale = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.scale")
+        scale.setValues_([1.0, 1.012, 1.010, 1.0, 1.0])
+        scale.setKeyTimes_([0, 0.30, 0.46, 0.80, 1.0])
+
+        lift = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.y")
+        lift.setValues_([0, -1.6, -1.3, 0, 0])
+        lift.setKeyTimes_([0, 0.30, 0.46, 0.80, 1.0])
+
+        ease = Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut")
+        for a in (scale, lift):
+            a.setTimingFunctions_([ease, ease, ease, ease])
+
+        group.setAnimations_([scale, lift])
+        group.setDuration_(2.6)
+        group.setRepeatCount_(1e9)
+        layer.addAnimation_forKey_(group, "breathe")
+
+    @objc.python_method
+    def chick_idle(self, view):
+        """Posture carries the mood. Same bird, different tempo and tilt —
+        cheaper and more legible than drawing four chickens."""
+        layer = view.layer()
+        if layer is None:
+            return
+        import Quartz
+        layer.removeAnimationForKey_("mood")
+        layer.setAnchorPoint_(AppKit.NSMakePoint(0.5, 0.0))
+
+        period, bob, tilt, alpha = {
+            # (period, bob px, tilt deg, opacity)
+            "fed":    (0.62, 5.0, 7.0, 1.00),
+            "ok":     (2.60, 1.8, 0.0, 1.00),
+            "hungry": (3.40, 1.0, -5.0, 0.80),
+            "droopy": (4.60, 0.5, -11.0, 0.58),
+        }[self.mood]
+
+        view.setAlphaValue_(alpha)
+
+        bobA = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.y")
+        bobA.setValues_([0, bob, bob * 0.8, 0, 0])
+        bobA.setKeyTimes_([0, 0.30, 0.46, 0.80, 1.0])
+        ease = Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut")
+        bobA.setTimingFunctions_([ease, ease, ease, ease])
+
+        rot = Quartz.CABasicAnimation.animationWithKeyPath_(
+            "transform.rotation.z")
+        rot.setFromValue_(tilt * 3.14159 / 180.0)
+        rot.setToValue_(
+            (tilt + (4 if self.mood == "fed" else 1.2)) * 3.14159 / 180.0)
+        rot.setAutoreverses_(True)
+
+        group = Quartz.CAAnimationGroup.animation()
+        group.setAnimations_([bobA, rot])
+        group.setDuration_(period)
+        group.setRepeatCount_(1e9)
+        layer.addAnimation_forKey_(group, "mood")
+
+    @objc.python_method
+    def feed(self):
+        """Scatter a little grain and let it perk up. This is the reward for
+        putting something in, so it should be the liveliest thing it does."""
+        view = self.card_chick
+        if view is None or view.layer() is None:
+            return
+        import Quartz
+
+        f = view.frame()
+        for i in range(5):
+            grain = AppKit.NSView.alloc().initWithFrame_(
+                NSMakeRect(f.origin.x + 6 + i * 6,
+                           f.origin.y + f.size.height + 16, 3.5, 3.5))
+            grain.setWantsLayer_(True)
+            grain.layer().setCornerRadius_(1.75)
+            grain.layer().setBackgroundColor_(GOLD.CGColor())
+            self.sheet.addSubview_(grain)
+
+            fall = Quartz.CABasicAnimation.animationWithKeyPath_(
+                "transform.translation.y")
+            fall.setFromValue_(0)
+            fall.setToValue_(-(f.size.height * 0.55 + 16))
+            fall.setDuration_(0.34)
+            # Staggered starts, so it reads as a handful thrown rather than a
+            # row of dots dropping in lockstep.
+            fall.setBeginTime_(Quartz.CACurrentMediaTime() + i * 0.045)
+            fall.setTimingFunction_(
+                Quartz.CAMediaTimingFunction.functionWithName_("easeIn"))
+            fall.setFillMode_("forwards")
+            fall.setRemovedOnCompletion_(False)
+            grain.layer().addAnimation_forKey_(fall, "fall")
+
+            AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+                0.42 + i * 0.045, False,
+                lambda tm, g=grain: g.removeFromSuperview())
+
+        # One peck per grain, then it stands up pleased.
+        peck = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.rotation.z")
+        d = 3.14159 / 180.0
+        peck.setValues_([0, 20 * d, 0, 18 * d, 0, 16 * d, 0, -8 * d, 0])
+        peck.setDuration_(1.05)
+        peck.setTimingFunction_(
+            Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut"))
+        view.layer().addAnimation_forKey_(peck, "feed")
+
+        # The mood is held here rather than waiting on the next fetch: the
+        # user just fed it, and a bird that stays droopy would call them a
+        # liar.
+        self.mood = "fed"
+        AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+            1.1, False, lambda tm: self.chick_idle(view))
+
+    @objc.python_method
+    def chick_hello(self):
+        """Hover: it notices you."""
+        view = self.card_chick
+        if view is None or view.layer() is None:
+            return
+        import Quartz
+        d = 3.14159 / 180.0
+        a = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.rotation.z")
+        a.setValues_([0, -14 * d, 6 * d, -4 * d, 0])
+        a.setDuration_(0.6)
+        a.setTimingFunction_(
+            Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut"))
+        view.layer().addAnimation_forKey_(a, "hello")
+
+    @objc.python_method
+    def chick_poke(self):
+        """Click: a startled hop."""
+        view = self.card_chick
+        if view is None or view.layer() is None:
+            return
+        import Quartz
+        a = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.y")
+        a.setValues_([0, 13, -3, 5, 0])
+        a.setKeyTimes_([0, 0.26, 0.55, 0.78, 1.0])
+        a.setDuration_(0.5)
+        a.setTimingFunction_(
+            Quartz.CAMediaTimingFunction.functionWithName_("easeOut"))
+        view.layer().addAnimation_forKey_(a, "poke")
+
+    @objc.python_method
+    def cheer(self):
+        """React to what the user just did, never on its own schedule."""
+        if self.sheet is None or self.sheet.layer() is None:
+            return
+        import Quartz
+        hop = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.y")
+        hop.setValues_([0, 5, -1.5, 0])
+        hop.setKeyTimes_([0, 0.35, 0.68, 1.0])
+        hop.setDuration_(0.52)
+        hop.setTimingFunction_(
+            Quartz.CAMediaTimingFunction.functionWithName_("easeOut"))
+        self.sheet.layer().addAnimation_forKey_(hop, "cheer")
 
     @objc.python_method
     def pulse(self, to=1.06, dur=0.16):
@@ -530,6 +737,8 @@ class Widget(NSObject):
         except Exception:
             pass
 
+        self.panel.invalidateShadow()
+
         self.breathe()
         # The real artwork when the bundle carries it; the emoji is only a
         # fallback for running straight from source.
@@ -564,7 +773,23 @@ class Widget(NSObject):
 
     # --- hover ---
 
-    def mouseEntered_(self, _):
+    def chickClicked_(self, _):
+        self.chick_poke()
+
+    def mouseEntered_(self, note):
+        # The chick has a tracking area of its own; greet rather than popping
+        # the info panel when the pointer is on the bird itself.
+        try:
+            info = note.userInfo()
+            if info and info.get("chick"):
+                self.chick_hello()
+                return
+        except Exception:
+            pass
+        self._mouse_entered_panel()
+
+    @objc.python_method
+    def _mouse_entered_panel(self):
         # Wait for the cursor to actually rest. Without this gate, sweeping
         # past the notch fires the popup every time.
         if self._leave is not None:
@@ -586,8 +811,11 @@ class Widget(NSObject):
 
     @objc.python_method
     def peek(self):
-        """Hover shows; it never needs a click to be read."""
+        """Hover shows; it never needs a click to be read. Expanded, the card
+        already says all of this — repeating it on top is just noise."""
         self._dwell = None
+        if self.mode == "card" and not self.collapsed:
+            return
         d = (self.last_data or {}).get("distill") or {}
         r = (self.last_data or {}).get("ready") or {}
         sp = (self.last_data or {}).get("sparks") or {}
@@ -631,6 +859,7 @@ class Widget(NSObject):
         if self.panel is None:
             self.build()
         self.last_data = data
+        self.mood = mood_for((data or {}).get("fedHoursAgo"))
         if self.mode == "island":
             self.render_island(data)
             return
@@ -747,6 +976,9 @@ class Widget(NSObject):
         self.field = field
         self.stats.setFrame_(NSMakeRect(0, 0, W, total - PAD - INPUT_H - 6))
 
+        # Recompute the window shadow against the new rounded shape.
+        self.panel.invalidateShadow()
+
         y = self.stats.frame().size.height
         self.targets = []
         for view, h, gap, route in lines:
@@ -761,6 +993,41 @@ class Widget(NSObject):
             click = AppKit.NSClickGestureRecognizer.alloc().initWithTarget_action_(
                 self, "clicked:")
             self.stats.addGestureRecognizer_(click)
+
+        # It keeps you company while the card is open, down in the corner
+        # where it never covers a line you are reading.
+        self.card_chick = None
+        path = _res("chick-72")
+        img = (AppKit.NSImage.alloc().initWithContentsOfFile_(path)
+               if path else None)
+        if img is not None:
+            side = 36
+            iv = AppKit.NSImageView.alloc().initWithFrame_(
+                NSMakeRect(W - side - 13, 11, side, side))
+            iv.setImage_(img)
+            iv.setImageScaling_(AppKit.NSImageScaleProportionallyUpOrDown)
+            iv.setWantsLayer_(True)
+            self.sheet.addSubview_(iv)
+            self.card_chick = iv
+            self.chick_idle(iv)
+
+            # Its own tracking area, tagged so mouseEntered: can tell the
+            # bird apart from the rest of the card.
+            for ta in list(iv.trackingAreas() or []):
+                iv.removeTrackingArea_(ta)
+            iv.addTrackingArea_(
+                AppKit.NSTrackingArea.alloc()
+                .initWithRect_options_owner_userInfo_(
+                    iv.bounds(),
+                    AppKit.NSTrackingMouseEnteredAndExited
+                    | AppKit.NSTrackingActiveAlways,
+                    self, {"chick": True}))
+            iv.addGestureRecognizer_(
+                AppKit.NSClickGestureRecognizer.alloc()
+                .initWithTarget_action_(self, "chickClicked:"))
+
+        # The card itself breathes, not the bird in it.
+        self.breathe_view(self.sheet)
 
     def clicked_(self, _):
         loc = self.stats.gestureRecognizers()[0].locationInView_(self.stats)
@@ -821,6 +1088,7 @@ class Widget(NSObject):
                         snd.setVolume_(0.10)
                         snd.play()
                 self.pulse()
+                self.feed()
             self.flash(t("capture_ok") if ok else t("capture_fail", err=info),
                        ok)
             return True
