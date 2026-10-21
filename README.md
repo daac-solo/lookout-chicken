@@ -72,6 +72,30 @@ suit a widget, so the widget adapts instead.
 The config is re-read on the next refresh (default every two minutes). If you
 would rather not wait, quit from the menu bar and `open` it again.
 
+### Try it without touching your vault
+
+The repo ships a `demo-vault/` — fourteen invented markdown notes, four of
+them finished and unpublished, the oldest dated June. Point the config at it
+first if you want to confirm the provider works before aiming it at anything
+you care about:
+
+```bash
+cat > ~/.config/lookout-chicken/config.json <<JSON
+{ "provider": "folder", "folder": { "path": "$PWD/demo-vault" } }
+JSON
+```
+
+(An absolute path, because a bundled `.app` does not run from this
+directory — a relative path would resolve against `/` and quietly find
+nothing.)
+
+You should see **4 finished · oldest 136 days · 14 in library**. If you do,
+the only thing left is to change the path.
+
+It is also worth opening a few of those files: they are commented to show
+what the parser does and does not understand, including one note with no
+frontmatter at all, which is counted but unclassifiable.
+
 ### What it looks for in a file
 
 One `status:` (or `state:`) line in the frontmatter is the whole requirement:
