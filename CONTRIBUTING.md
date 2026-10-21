@@ -24,5 +24,12 @@ That shapes what is useful here:
 **Fork it.** It is small on purpose. If your flow differs, changing the code
 is probably faster than persuading me, and the result will fit you better.
 
-No CI, no test suite. Before opening a PR, please confirm the app builds and
-the bundled binary launches with no traceback on the demo provider.
+No CI, no test suite. Run `./check.sh` before opening a PR: it compiles
+every module, checks both string tables are complete and agree on their
+placeholders, reads `demo-vault/` through the folder provider, confirms bad
+input degrades to zeros rather than raising, and — if you have built one —
+launches the bundled binary to see whether it survives eight seconds.
+
+That last one is the check worth keeping. Two builds in this project's short
+history crashed on launch while everything else passed, because a menu bar
+app's failures are visual and the bundle swallows the traceback.

@@ -19,3 +19,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+The chick artwork in `logo/` and `AppIcon.icns` is the author's own, used as
+a personal mark elsewhere, and is NOT covered by the licence above.
+
+Fork the code freely and keep the artwork while you are running it for
+yourself. If you publish a fork as its own product, replace the artwork with
+your own — the drawing identifies a person, not a feature.

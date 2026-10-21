@@ -51,7 +51,10 @@ they will show up as a library count with zero finished pieces until you add
 a status line to the ones you care about. Nothing is wrong when that happens;
 there is simply nothing in the files to read.
 
-![screenshot placeholder](docs/screenshot.png)
+![The card, the notch pill, and the pet, in that order](docs/demo.gif)
+
+*Card → tucked under the notch → loose on the desktop. The numbers come from
+the `demo-vault/` in this repo, not from a real one.*
 
 Requires macOS 13+ and Python 3.11+.
 

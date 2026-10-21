@@ -81,12 +81,19 @@ How each field is derived:
 - **`sparks.hot`** — `spark_states` files modified within three days.
 - **`fedHoursAgo`** — hours since the newest mtime in the tree. It reads
   mtime rather than scan time on purpose: a refresh is not a meal.
+- **`source`** — the literal string `"folder"`. The widget uses it to tell a
+  real "nothing finished yet" apart from a number that came from somewhere
+  else, so it can explain a zero instead of just showing one. Report it from
+  your own provider only if you want that same explanation; the key is
+  otherwise ignored.
 - **`distill`** — not reported. It describes one person's daily writing
   habit, and the widget skips the section when it is absent.
 
-Only the frontmatter is parsed, and only a small subset of YAML: `key: value`,
-quoted values, and `[a, b]` lists. A file with no frontmatter still counts
-toward `library` but cannot be classified.
+Two property formats are read. YAML frontmatter between `---` fences, in a
+small subset: `key: value`, quoted values, and `[a, b]` lists. And Logseq's
+leading `key:: value` block, including its `[[date]]` links. `.md` and
+`.markdown` are scanned; a file with neither format still counts toward
+`library` but cannot be classified.
 
 The scan is cached and only repeats when the newest mtime in the tree changes,
 so pointing it at a large vault does not cost anything on every refresh. A

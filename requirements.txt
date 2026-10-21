@@ -1,3 +1,7 @@
+# Lower bounds, not pins: this has to build on whatever Python a stranger
+# already has, and pinning exact versions would break more clones than it
+# fixes. Upper bounds are left off deliberately — if a future release breaks
+# the build, that is a bug report worth having rather than a version wall.
 rumps>=0.4.0
 pyobjc-framework-Cocoa>=10.0
 pyobjc-framework-Quartz>=10.0
