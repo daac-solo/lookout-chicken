@@ -68,9 +68,9 @@ ZH = {
         "半句也算",
     ],
     "capture_ok": "记下了，接着忙",
-    "capture_to": "存好了 · {where}",
+    "capture_to": "写进 {where}",
     "capture_fail": "没存上：{err}",
-    "shelved_short": "上搁板了",
+    "shelved_short": "上搁板了 · 还没进你的笔记",
     "already_shelved": "已经在搁板上了",
 
     # widget body
@@ -155,9 +155,9 @@ EN = {
         "Half a sentence counts",
     ],
     "capture_ok": "Got it, carry on",
-    "capture_to": "Saved \u00b7 {where}",
+    "capture_to": "Wrote {where}",
     "capture_fail": "Didn't save: {err}",
-    "shelved_short": "on the shelf",
+    "shelved_short": "on the shelf \u00b7 not in your notes yet",
     "already_shelved": "already on the shelf",
 
     "distill_day": "Day {day}",

@@ -7,6 +7,22 @@ changes and the patch number when something is repaired.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed capture no longer looks like a broken Enter key.** PyObjC
+  swallows exceptions raised inside a delegate method, so anything going
+  wrong when you pressed Enter produced no sound, no error and no saved
+  note — indistinguishable from the key not being wired up. Whatever breaks
+  now says so in the field and leaves your text there to retry, with the
+  traceback in `~/.local/share/lookout-chicken/error.log`.
+
+### Changed
+
+- **The confirmation names where the note went** — *wrote inbox/….md*, or
+  *on the shelf · not in your notes yet* — instead of a generic "saved".
+  Two keys send to two different places, and without this there is no way
+  to tell which one happened.
+
 ### Added
 
 - `pick` joins the command-file verbs, so the folder picker can be opened

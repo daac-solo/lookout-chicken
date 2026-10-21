@@ -43,6 +43,8 @@ PAD = 14
 INPUT_H = 46
 # Loud enough to feel the key, quiet enough to type next to someone.
 KEY_VOLUME = 0.30
+ERROR_LOG = os.path.join(os.path.expanduser("~"),
+                         ".local", "share", "lookout-chicken", "error.log")
 # Generated on first use into app state, not shipped as a binary asset:
 # the character is tuned by reading numbers in keysound.py rather than by
 # opening an audio editor.
@@ -1126,35 +1128,53 @@ class Widget(NSObject):
             return True
 
         if name == "insertNewline:":
-            text = self.field.stringValue().strip()
-            if not text:
+            # PyObjC swallows exceptions raised inside a delegate method, so
+            # anything that goes wrong in here looks exactly like Enter not
+            # being wired up: no sound, no error, nothing happens. Say what
+            # broke and leave the text in the field so it can be retried.
+            try:
+                return self.submit()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                try:
+                    with open(ERROR_LOG, "a", encoding="utf-8") as fh:
+                        fh.write(traceback.format_exc() + "\n")
+                except OSError:
+                    pass
+                self.flash(t("capture_fail", err=type(e).__name__), False)
                 return True
-            shift = (AppKit.NSEvent.modifierFlags()
-                     & AppKit.NSEventModifierFlagShift) != 0
-            ok, info = (self.on_flow(text) if shift else self.on_shelf(text))
-            self.field.setStringValue_("")
-            self.note = ""
-            # A fresh invitation each time, so the next thought meets a
-            # slightly different door.
-            self.prompt = random.choice(strings.prompts())
-            if ok:
-                if TYPE_SOUND:
-                    snd = AppKit.NSSound.soundNamed_("Bottle")
-                    if snd:
-                        snd.setVolume_(0.10)
-                        snd.play()
-                self.pulse()
-                self.feed()
-            # Say where it went. Enter and Shift-Enter have different
-            # destinations, and a confirmation that names the file is the
-            # only thing that teaches the difference — nobody reads a
-            # keyboard hint under a text field.
-            self.flash(
-                (t("capture_to", where=info) if info else t("capture_ok"))
-                if ok else t("capture_fail", err=info), ok)
-            return True
 
         return False
+
+    @objc.python_method
+    def submit(self):
+        text = self.field.stringValue().strip()
+        if not text:
+            return True
+        shift = (AppKit.NSEvent.modifierFlags()
+                 & AppKit.NSEventModifierFlagShift) != 0
+        ok, info = (self.on_flow(text) if shift else self.on_shelf(text))
+        self.field.setStringValue_("")
+        self.note = ""
+        # A fresh invitation each time, so the next thought meets a
+        # slightly different door.
+        self.prompt = random.choice(strings.prompts())
+        if ok:
+            if TYPE_SOUND:
+                snd = AppKit.NSSound.soundNamed_("Bottle")
+                if snd:
+                    snd.setVolume_(0.10)
+                    snd.play()
+            self.pulse()
+            self.feed()
+        # The message names the destination rather than wearing a generic
+        # prefix: two keys send to two different places, and a confirmation
+        # that does not say which leaves you wondering whether the thought
+        # reached your notes at all.
+        self.flash((info or t("capture_ok")) if ok
+                   else t("capture_fail", err=info), ok)
+        return True
 
     @objc.python_method
     def flash(self, text, good):

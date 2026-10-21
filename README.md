@@ -266,6 +266,15 @@ Two destinations, because not everything you grab deserves to be kept:
 | `Enter` | a local shelf | the link you grabbed in a hurry, to sort later |
 | `⇧Enter` | your notes folder | the thought you already know is worth keeping |
 
+**It always tells you which.** The field confirms with the destination
+itself — *wrote inbox/2026-10-21-….md*, or *on the shelf · not in your
+notes yet* — rather than a generic "saved", because the one thing you need
+to know afterwards is whether the thought reached your vault.
+
+The shelf is `~/.local/share/lookout-chicken/shelf.json`, and the menu bar
+shows how many are on it. It is staging, not storage: move things off it
+with `⇧Enter` or delete them.
+
 `⇧Enter` writes one markdown file per capture into a subfolder of your
 vault — `inbox/` unless you name another — with frontmatter the provider
 itself reads back:
