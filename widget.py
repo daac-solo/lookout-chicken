@@ -653,7 +653,9 @@ class Widget(NSObject):
 
         now = Quartz.CACurrentMediaTime()
         f = view.frame()
-        n = 4
+        # Three, not four. Slowing each one down and keeping four made the
+        # whole thing outlast the moment it is rewarding.
+        n = 3
         # The grain lands to its left, on the same line it stands on, with a
         # gap wide enough that walking there is visibly a journey.
         gx0 = f.origin.x - 74
@@ -661,10 +663,13 @@ class Widget(NSObject):
         ground = f.origin.y + 4
         drop_from = f.size.height + 26
 
-        FALL = 0.34          # grain in the air
-        STAGGER = 0.14       # one at a time, not a handful at once
+        # Drifting down, not dropped. A grain is light; falling at the
+        # speed of a dropped coin is what made it read as a handful thrown
+        # rather than scattered.
+        FALL = 0.52          # grain in the air
+        STAGGER = 0.26       # clearly one, then the next
         WALK = 0.42          # getting there
-        PECK = 0.30          # one grain
+        PECK = 0.28          # one grain
         # It sets off as the last grain lands, not before: a bird that starts
         # walking toward food still in the air is not reacting to anything.
         start_walk = (n - 1) * STAGGER + FALL - 0.06
@@ -691,20 +696,38 @@ class Widget(NSObject):
 
             fall = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
                 "transform.translation.y")
-            # A small bounce where it lands, so the grain has weight.
-            fall.setValues_([drop_from, 0, 5, 0])
-            fall.setKeyTimes_([0, 0.82, 0.92, 1.0])
+            # Slower through the top of its arc, quicker at the end, then a
+            # small settle — the shape of something light coming down.
+            fall.setValues_([drop_from, drop_from * 0.42, 0, 4, 0])
+            fall.setKeyTimes_([0, 0.46, 0.84, 0.93, 1.0])
             fall.setDuration_(FALL)
             fall.setBeginTime_(now + i * STAGGER)
-            fall.setTimingFunction_(
-                Quartz.CAMediaTimingFunction.functionWithName_("easeIn"))
+            fall.setTimingFunctions_([
+                Quartz.CAMediaTimingFunction.functionWithName_("easeIn"),
+                Quartz.CAMediaTimingFunction.functionWithName_("easeIn"),
+                Quartz.CAMediaTimingFunction.functionWithName_("easeOut"),
+                Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut")])
             fall.setFillMode_("backwards")
             g.layer().addAnimation_forKey_(fall, "fall")
+
+            # A little sideways drift. Nothing light falls in a straight
+            # line, and the straight line was most of why it read as fast.
+            drift = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+                "transform.translation.x")
+            sway = 3.5 if i % 2 == 0 else -3.5
+            drift.setValues_([sway, -sway * 0.5, sway * 0.25, 0])
+            drift.setKeyTimes_([0, 0.42, 0.78, 1.0])
+            drift.setDuration_(FALL)
+            drift.setBeginTime_(now + i * STAGGER)
+            drift.setTimingFunction_(
+                Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut"))
+            drift.setFillMode_("backwards")
+            g.layer().addAnimation_forKey_(drift, "drift")
 
             # A tick as each one lands. Quiet: four in a second, and the
             # point is texture rather than punctuation.
             AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
-                i * STAGGER + FALL * 0.86, False,
+                i * STAGGER + FALL * 0.88, False,
                 lambda t: self._grain_tick())
 
             # Eaten in the order it walks past them, one per peck.
@@ -1159,12 +1182,31 @@ class Widget(NSObject):
             return
 
         self.keep_draft()
+        # Paper, every time. The island paints the sheet AND the glass black
+        # to match the notch, and restoring the glass was left to unpark() —
+        # so any route back to the card that did not run it came back as a
+        # black card with ink-coloured text on it. A mode owns its own
+        # appearance; it does not inherit what the last one left behind.
         if not self.glass:
             self.body.layer().setCornerRadius_(14)
         self.sheet.layer().setBackgroundColor_(
             PAPER_SOLID.colorWithAlphaComponent_(0.90).CGColor())
         self.sheet.layer().setCornerRadius_(16)
         self.sheet.layer().setBorderWidth_(0)
+        self.body.layer().setBackgroundColor_(
+            AppKit.NSColor.clearColor().CGColor())
+        if self.glass:
+            try:
+                self.body.setTintColor_(
+                    PAPER_SOLID.colorWithAlphaComponent_(0.72))
+                self.body.setCornerRadius_(20)
+            except Exception:
+                pass
+        for _l in (self.body.layer(), self.sheet.layer()):
+            try:
+                _l.setMaskedCorners_(ALL_CORNERS)
+            except Exception:
+                pass
 
         # The ball and island own the whole sheet; coming back to the card
         # means rebuilding the stats container they tore down.
