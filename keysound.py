@@ -78,3 +78,49 @@ def ensure(dirpath):
                 continue
         paths.append(p)
     return paths
+
+
+# --- grain ---------------------------------------------------------------
+# A grain landing on paper is not a keystroke: almost no body, a short bright
+# tick with a trace of ring. Quieter than the key, because four of them land
+# in under a second and the point is texture, not punctuation.
+
+def _grain(path, seed):
+    rnd = random.Random(seed)
+    hz = rnd.uniform(2100.0, 2900.0)
+    dur = rnd.uniform(0.016, 0.024)
+    n = int(RATE * dur)
+    samples = array.array("h")
+    for i in range(n):
+        t = i / RATE
+        env = math.exp(-t * 320.0)
+        tick = rnd.uniform(-1.0, 1.0) * math.exp(-t * 1700.0) * 0.55
+        ring = math.sin(2.0 * math.pi * hz * t) * 0.45
+        # A little low end so it lands on something rather than in the air.
+        body = math.sin(2.0 * math.pi * 260.0 * t) * 0.18 * math.exp(-t * 500.0)
+        v = (tick + ring + body) * env
+        samples.append(int(max(-1.0, min(1.0, math.tanh(v * 1.3))) * 26000))
+    fade = int(RATE * 0.0008)
+    for i in range(min(fade, len(samples))):
+        k = i / fade
+        samples[i] = int(samples[i] * k)
+        samples[-1 - i] = int(samples[-1 - i] * k)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(samples.tobytes())
+
+
+def ensure_grain(dirpath):
+    os.makedirs(dirpath, exist_ok=True)
+    paths = []
+    for i in range(3):
+        p = os.path.join(dirpath, f"grain-{i}.wav")
+        if not os.path.exists(p) or os.path.getsize(p) < 300:
+            try:
+                _grain(p, seed=5000 + i)
+            except Exception:
+                continue
+        paths.append(p)
+    return paths

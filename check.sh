@@ -55,6 +55,55 @@ for cfg in (None, {}, {"folder": {"path": "/nope"}}, {"folder": {"path": ""}}):
 print("   zeros, no exception")
 EOF
 
+echo "→ no file I/O without an explicit encoding"
+$PY - <<'EOF'
+import io, re, sys, pathlib
+# The locale default inside a py2app bundle is ASCII. Any read_text or
+# write_text without an encoding works from source and raises on the first
+# non-Latin character once bundled — and write_text truncates before it
+# encodes, so that failure destroys the file it was saving. This cost a
+# shelf once; it does not get to happen twice.
+bad = []
+for f in pathlib.Path(".").rglob("*.py"):
+    if ".venv" in f.parts or "build" in f.parts or "dist" in f.parts:
+        continue
+    lines = io.open(f, encoding="utf-8").read().splitlines()
+    for n, line in enumerate(lines, 1):
+        if not re.search(r"\.(read_text|write_text)\(", line):
+            continue
+        # The argument may sit on a continuation line, so read until the
+        # call's parentheses balance rather than judging one line alone.
+        chunk, depth = "", 0
+        for l in lines[n - 1:n + 4]:
+            chunk += l
+            depth += l.count("(") - l.count(")")
+            if depth <= 0:
+                break
+        if "encoding=" not in chunk:
+            bad.append(f"{f}:{n}: {line.strip()}")
+if bad:
+    print("   missing encoding:")
+    for b in bad: print("    ", b)
+    sys.exit(1)
+print("   ok")
+EOF
+
+echo "→ a note in any script survives a round trip"
+$PY - <<'EOF'
+import json, tempfile, pathlib, os
+# Exercises the real writer, not a copy of it.
+import chicken, config
+d = tempfile.mkdtemp()
+config.SHELF_FILE = pathlib.Path(d) / "shelf.json"
+config.STATE_DIR = pathlib.Path(d)
+items = [{"text": "中文 · emoji 😮 · ascii", "at": "2026-10-21T00:00:00"}]
+chicken.save_shelf(items)
+back = chicken.load_shelf()
+assert back == items, back
+assert config.SHELF_FILE.stat().st_size > 0
+print("   ok")
+EOF
+
 echo "→ README links point at files that exist"
 $PY - <<'EOF'
 import re, io, os, sys

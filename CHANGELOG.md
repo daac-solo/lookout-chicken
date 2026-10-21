@@ -7,7 +7,29 @@ changes and the patch number when something is repaired.
 
 ## [Unreleased]
 
+### Added
+
+- **It walks over and eats.** Grain lands to one side, one at a time with a
+  tick as each settles; the chick notices, hops over, eats them one per
+  peck, says something, and hops back. Pecking on the spot read as a twitch
+  — the reward for putting something in should be a small story.
+- **A keystroke and a grain have different sounds**, both synthesised rather
+  than borrowed, because no system sound has anything below 1kHz.
+
 ### Fixed
+
+- **Hovering never did anything.** The widget is a non-activating panel, and
+  macOS does not deliver mouse-moved events to one while the app is in the
+  background — so no tracking area on it could ever fire, no matter which
+  options it carried. Clicks arrive by a different route, which is why the
+  chick reacted to a click and ignored the pointer. Hover is now computed
+  from `NSEvent.mouseLocation()`, which does work from the background, on a
+  timer that runs only while the panel is visible.
+- **The grain was invisible.** Gold on paper measures 2.1:1, at 3.5pt. Ochre
+  at 4.7:1, 6×4 and oval, is something you can see lying on a page.
+- **Animation groups do not pass their duration to their children.** Left at
+  zero, each sub-animation ran for CoreAnimation's default quarter second
+  and snapped back — which looks exactly like the chick never moving.
 
 - **A failed capture no longer looks like a broken Enter key.** PyObjC
   swallows exceptions raised inside a delegate method, so anything going

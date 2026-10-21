@@ -80,6 +80,11 @@ FAINT = _c(0.580, 0.549, 0.494)
 ALERT = _c(0.769, 0.322, 0.165)      # terracotta, not a siren red
 CALM = _c(0.361, 0.478, 0.361)
 GOLD = _c(0.769, 0.659, 0.510)
+# Grain, not gold. GOLD on paper measures 2.1:1 — technically drawn, and in
+# practice a dot nobody can see.
+GRAIN = _c(0.56, 0.40, 0.20)
+# Said once, after the last grain.
+YUMS = ["yummy", "好吃", "yum yum", "再来点", "😋", "咕咕"]
 
 # How long since anything went into the system. The companion wears this:
 # fed and lively, settled, hungry, or droopy. It is the one state it has that
@@ -139,6 +144,17 @@ def notched_screen():
     return AppKit.NSScreen.mainScreen()
 
 
+def _text_width(text, size):
+    """Measure rather than guess: CJK and Latin differ enough at 11pt that a
+    fixed per-character width would leave chips either clipped or padded."""
+    try:
+        attrs = {AppKit.NSFontAttributeName: _round_cjk(size)}
+        return float(AppKit.NSString.stringWithString_(text)
+                     .sizeWithAttributes_(attrs).width)
+    except Exception:
+        return 11.0 * len(text)
+
+
 def _label(text, size, color, weight=AppKit.NSFontWeightRegular, serif=False):
     f = AppKit.NSTextField.labelWithString_(text)
     if serif:
@@ -188,6 +204,17 @@ class Widget(NSObject):
         # Loaded once: building an NSSound per keystroke would stutter.
         self._keys = []
         self._key_i = 0
+        self._grains_snd = []
+        self._grain_i = 0
+        try:
+            import keysound
+            for path in keysound.ensure_grain(KEY_DIR):
+                snd = AppKit.NSSound.alloc().initWithContentsOfFile_byReference_(
+                    path, True)
+                if snd is not None:
+                    self._grains_snd.append(snd)
+        except Exception:
+            pass
         try:
             import keysound
             for path in keysound.ensure(KEY_DIR):
@@ -244,6 +271,11 @@ class Widget(NSObject):
         # A small thing on a busy wallpaper disappears without a shadow.
         panel.setHasShadow_(True)
         panel.setMovableByWindowBackground_(True)
+        # Tracking areas on a panel that never becomes key get no enter or
+        # exit events while the app is in the background. This does not fix
+        # that on its own — see start_hover_watch — but without it even the
+        # cases that could work do not.
+        panel.setAcceptsMouseMovedEvents_(True)
         panel.setCollectionBehavior_(
             AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
             | AppKit.NSWindowCollectionBehaviorStationary
@@ -607,57 +639,212 @@ class Widget(NSObject):
 
     @objc.python_method
     def feed(self):
-        """Scatter a little grain and let it perk up. This is the reward for
-        putting something in, so it should be the liveliest thing it does."""
-        view = self.card_chick
+        """Scatter rice to one side and let it walk over and eat.
+
+        Pecking on the spot read as a twitch. The reward for putting
+        something in should be a small story: grain lands over there, it
+        notices, it goes, it eats, it comes back. Nothing else in the app
+        moves across the surface, which is what makes this worth watching.
+        """
+        view = getattr(self, "card_chick", None)
         if view is None or view.layer() is None:
             return
         import Quartz
 
+        now = Quartz.CACurrentMediaTime()
         f = view.frame()
-        for i in range(5):
-            grain = AppKit.NSView.alloc().initWithFrame_(
-                NSMakeRect(f.origin.x + 6 + i * 6,
-                           f.origin.y + f.size.height + 16, 3.5, 3.5))
-            grain.setWantsLayer_(True)
-            grain.layer().setCornerRadius_(1.75)
-            grain.layer().setBackgroundColor_(GOLD.CGColor())
-            self.sheet.addSubview_(grain)
+        n = 4
+        # The grain lands to its left, on the same line it stands on, with a
+        # gap wide enough that walking there is visibly a journey.
+        gx0 = f.origin.x - 74
+        spacing = 15
+        ground = f.origin.y + 4
+        drop_from = f.size.height + 26
 
-            fall = Quartz.CABasicAnimation.animationWithKeyPath_(
+        FALL = 0.34          # grain in the air
+        STAGGER = 0.14       # one at a time, not a handful at once
+        WALK = 0.42          # getting there
+        PECK = 0.30          # one grain
+        # It sets off as the last grain lands, not before: a bird that starts
+        # walking toward food still in the air is not reacting to anything.
+        start_walk = (n - 1) * STAGGER + FALL - 0.06
+        start_peck = start_walk + WALK
+        eat = n * PECK
+        back_at = start_peck + eat
+
+        grains = []
+        for i in range(n):
+            # Bigger and oval: a circle at this size is a speck, a grain has
+            # a long axis you can actually recognise.
+            g = AppKit.NSView.alloc().initWithFrame_(
+                NSMakeRect(gx0 + i * spacing, ground, 6.0, 4.0))
+            g.setWantsLayer_(True)
+            g.layer().setCornerRadius_(2.0)
+            g.layer().setBackgroundColor_(GRAIN.CGColor())
+            # A hairline of shadow so it sits ON the paper rather than in it.
+            g.layer().setShadowColor_(INK.CGColor())
+            g.layer().setShadowOpacity_(0.22)
+            g.layer().setShadowRadius_(1.0)
+            g.layer().setShadowOffset_(AppKit.NSMakeSize(0, -0.5))
+            self.sheet.addSubview_(g)
+            grains.append(g)
+
+            fall = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
                 "transform.translation.y")
-            fall.setFromValue_(0)
-            fall.setToValue_(-(f.size.height * 0.55 + 16))
-            fall.setDuration_(0.34)
-            # Staggered starts, so it reads as a handful thrown rather than a
-            # row of dots dropping in lockstep.
-            fall.setBeginTime_(Quartz.CACurrentMediaTime() + i * 0.045)
+            # A small bounce where it lands, so the grain has weight.
+            fall.setValues_([drop_from, 0, 5, 0])
+            fall.setKeyTimes_([0, 0.82, 0.92, 1.0])
+            fall.setDuration_(FALL)
+            fall.setBeginTime_(now + i * STAGGER)
             fall.setTimingFunction_(
                 Quartz.CAMediaTimingFunction.functionWithName_("easeIn"))
-            fall.setFillMode_("forwards")
-            fall.setRemovedOnCompletion_(False)
-            grain.layer().addAnimation_forKey_(fall, "fall")
+            fall.setFillMode_("backwards")
+            g.layer().addAnimation_forKey_(fall, "fall")
 
+            # A tick as each one lands. Quiet: four in a second, and the
+            # point is texture rather than punctuation.
             AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
-                0.42 + i * 0.045, False,
-                lambda tm, g=grain: g.removeFromSuperview())
+                i * STAGGER + FALL * 0.86, False,
+                lambda t: self._grain_tick())
 
-        # One peck per grain, then it stands up pleased.
+            # Eaten in the order it walks past them, one per peck.
+            AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+                start_peck + (i + 0.55) * PECK, False,
+                lambda t, gg=g: gg.removeFromSuperview())
+
+        # --- the walk: two hops out, eat, two hops back ---
+        dx = (gx0 + (n - 1) * spacing / 2.0) - (f.origin.x + f.size.width / 2.0)
+        total = back_at + WALK
+
+        def at(t):
+            return max(0.0, min(1.0, t / total))
+
+        move = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.x")
+        move.setValues_([0, 0, dx, dx, 0])
+        move.setKeyTimes_([0, at(start_walk), at(start_peck),
+                           at(back_at), 1.0])
+        move.setTimingFunctions_([
+            Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut")] * 4)
+
+        # Hops rather than a glide: a bird that slides looks like a cursor.
+        hop_v, hop_t = [0], [0.0]
+        for seg_start, seg_len, hops in ((start_walk, WALK, 2),
+                                         (back_at, WALK, 2)):
+            for h in range(hops):
+                a = seg_start + seg_len * (h + 0.5) / hops
+                b = seg_start + seg_len * (h + 1.0) / hops
+                hop_v += [7, 0]
+                hop_t += [at(a), at(b)]
+        # The last hop already lands on 1.0; appending another would give
+        # CoreAnimation two keyframes at the same time, which it renders as
+        # a stutter at the end of the walk.
+        if hop_t[-1] < 1.0:
+            hop_v.append(0)
+            hop_t.append(1.0)
+        jump = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.y")
+        jump.setValues_(hop_v)
+        jump.setKeyTimes_(hop_t)
+
+        # One dip of the head per grain, while it is standing over them.
+        d = 3.14159 / 180.0
+        pv, pt = [0], [0.0]
+        for i in range(n):
+            a = start_peck + (i + 0.25) * PECK
+            b = start_peck + (i + 0.70) * PECK
+            pv += [22 * d, 0]
+            pt += [at(a), at(b)]
+        if pt[-1] < 1.0:
+            pv.append(0)
+            pt.append(1.0)
         peck = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
             "transform.rotation.z")
-        d = 3.14159 / 180.0
-        peck.setValues_([0, 20 * d, 0, 18 * d, 0, 16 * d, 0, -8 * d, 0])
-        peck.setDuration_(1.05)
-        peck.setTimingFunction_(
-            Quartz.CAMediaTimingFunction.functionWithName_("easeInEaseOut"))
-        view.layer().addAnimation_forKey_(peck, "feed")
+        peck.setValues_(pv)
+        peck.setKeyTimes_(pt)
 
-        # The mood is held here rather than waiting on the next fetch: the
-        # user just fed it, and a bird that stays droopy would call them a
-        # liar.
+        # Children of a group do NOT inherit its duration. Left at 0 they
+        # each run for CoreAnimation's default 0.25s and snap back, which
+        # looks exactly like the chick never moving at all.
+        for a in (move, jump, peck):
+            a.setDuration_(total)
+
+        group = Quartz.CAAnimationGroup.animation()
+        group.setAnimations_([move, jump, peck])
+        group.setDuration_(total)
+        group.setRemovedOnCompletion_(True)
+        layer = view.layer()
+        # Drop the idle loop for the duration, or the two fight over the
+        # same transform and the walk comes out jittery.
+        layer.removeAnimationForKey_("mood")
+        layer.addAnimation_forKey_(group, "feed")
+
+        # A word of thanks once the last grain is gone — the point of the
+        # whole animation is that putting something in felt worth doing.
+        AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+            back_at - 0.05, False, lambda t: self._yum(view))
+
         self.mood = "fed"
         AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
-            1.1, False, lambda tm: self.chick_idle(view))
+            total + 0.05, False, lambda t: self.chick_idle(view))
+
+    @objc.python_method
+    def _grain_tick(self):
+        if not TYPE_SOUND or not self._grains_snd:
+            return
+        self._grain_i = (self._grain_i + 1) % len(self._grains_snd)
+        snd = self._grains_snd[self._grain_i]
+        snd.setVolume_(0.16)
+        snd.stop()
+        snd.play()
+
+    @objc.python_method
+    def _yum(self, view):
+        """A small label that floats up off the chick and fades."""
+        if self.sheet is None or view is None:
+            return
+        import Quartz
+        f = view.frame()
+        word = random.choice(YUMS)
+        label = _label(word, 12, GRAIN, AppKit.NSFontWeightSemibold)
+        w = _text_width(word, 12) + 4
+        # Centred over wherever it is standing, which is away from home.
+        dx = 0.0
+        try:
+            t = view.layer().presentationLayer()
+            if t is not None:
+                dx = t.transform().m41 if hasattr(t.transform(), "m41") else 0.0
+        except Exception:
+            dx = 0.0
+        label.setFrame_(NSMakeRect(f.origin.x + dx + (f.size.width - w) / 2.0,
+                                   f.origin.y + f.size.height - 2, w, 16))
+        label.setAlphaValue_(0.0)
+        # An NSTextField has no layer until asked, and a layerless view
+        # silently ignores every animation added to it.
+        label.setWantsLayer_(True)
+        self.sheet.addSubview_(label)
+        if label.layer() is None:
+            label.setAlphaValue_(1.0)
+            AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+                0.9, False, lambda t: label.removeFromSuperview())
+            return
+
+        rise = Quartz.CAKeyframeAnimation.animationWithKeyPath_(
+            "transform.translation.y")
+        rise.setValues_([0, 14, 20])
+        rise.setKeyTimes_([0, 0.55, 1.0])
+        fade = Quartz.CAKeyframeAnimation.animationWithKeyPath_("opacity")
+        fade.setValues_([0.0, 1.0, 1.0, 0.0])
+        fade.setKeyTimes_([0, 0.18, 0.62, 1.0])
+        grp = Quartz.CAAnimationGroup.animation()
+        grp.setAnimations_([rise, fade])
+        grp.setDuration_(1.1)
+        grp.setTimingFunction_(
+            Quartz.CAMediaTimingFunction.functionWithName_("easeOut"))
+        label.layer().addAnimation_forKey_(grp, "yum")
+
+        AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+            1.15, False, lambda t: label.removeFromSuperview())
 
     @objc.python_method
     def chick_hello(self):
@@ -823,6 +1010,74 @@ class Widget(NSObject):
         except Exception:
             pass
         self._mouse_entered_panel()
+
+    # --- hover -----------------------------------------------------------
+    # Tracking areas do not work here. This panel is a non-activating one, and
+    # while the app is in the background macOS does not deliver mouse-moved
+    # events to it at all — NSTrackingActiveAlways governs which areas are
+    # eligible, not whether the window is sent anything to match against.
+    # Clicks still arrive, which is why the chick reacted to a click and
+    # ignored the pointer.
+    #
+    # NSEvent.mouseLocation() reads correctly from a background app, so the
+    # hover is computed here instead. A timer that only runs while the panel
+    # is on screen, comparing one point against two rectangles.
+
+    @objc.python_method
+    def start_hover_watch(self):
+        if getattr(self, "_hover_timer", None) is not None:
+            return
+        self._in_panel = False
+        self._in_chick = False
+        self._hover_timer = (
+            AppKit.NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+                0.12, True, lambda t: self._hover_tick()))
+
+    @objc.python_method
+    def stop_hover_watch(self):
+        t = getattr(self, "_hover_timer", None)
+        if t is not None:
+            t.invalidate()
+            self._hover_timer = None
+        self._in_panel = False
+        self._in_chick = False
+
+    @objc.python_method
+    def _screen_rect(self, view):
+        try:
+            r = view.convertRect_toView_(view.bounds(), None)
+            return self.panel.convertRectToScreen_(r)
+        except Exception:
+            return None
+
+    @objc.python_method
+    def _hover_tick(self):
+        if self.panel is None or not self.panel.isVisible():
+            return
+        p = AppKit.NSEvent.mouseLocation()
+        pf = self.panel.frame()
+        in_panel = (pf.origin.x <= p.x <= pf.origin.x + pf.size.width
+                    and pf.origin.y <= p.y <= pf.origin.y + pf.size.height)
+
+        chick = getattr(self, "card_chick", None)
+        in_chick = False
+        if chick is not None and in_panel:
+            r = self._screen_rect(chick)
+            if r is not None:
+                # A little slack: a 36pt bird is a small target to hold.
+                pad = 6
+                in_chick = (r.origin.x - pad <= p.x <= r.origin.x + r.size.width + pad
+                            and r.origin.y - pad <= p.y <= r.origin.y + r.size.height + pad)
+
+        if in_chick and not self._in_chick:
+            self.chick_hello()
+        self._in_chick = in_chick
+
+        if in_panel and not self._in_panel:
+            self._mouse_entered_panel()
+        elif not in_panel and self._in_panel:
+            self.mouseExited_(None)
+        self._in_panel = in_panel
 
     @objc.python_method
     def _mouse_entered_panel(self):

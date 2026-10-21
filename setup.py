@@ -21,7 +21,7 @@ from setuptools import setup
 # Single source of truth: the tag, the changelog heading and the bundle all
 # read this file, so a release cannot ship a version that disagrees with
 # the one it claims.
-VERSION = (Path(__file__).parent / "VERSION").read_text().strip()
+VERSION = (Path(__file__).parent / "VERSION").read_text(encoding="utf-8").strip()
 
 APP = ["chicken.py"]
 ICON = "AppIcon.icns"

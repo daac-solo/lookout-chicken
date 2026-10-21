@@ -40,15 +40,25 @@ MAX_ITEMS = 50
 
 def load_shelf():
     try:
-        return json.loads(config.SHELF_FILE.read_text())
+        return json.loads(config.SHELF_FILE.read_text(encoding="utf-8"))
     except Exception:
         return []
 
 
 def save_shelf(items):
+    """Write the shelf without ever being able to destroy it.
+
+    write_text() uses the locale encoding, which inside a py2app bundle is
+    ASCII — so a note in any non-Latin script raised UnicodeEncodeError. And
+    because write_text truncates before it encodes, that failure emptied the
+    file instead of leaving it alone. Hence both an explicit encoding and a
+    temporary file that only replaces the real one once it is complete.
+    """
     config.ensure_state_dir()
-    config.SHELF_FILE.write_text(
-        json.dumps(items, ensure_ascii=False, indent=2))
+    tmp = config.SHELF_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    tmp.replace(config.SHELF_FILE)
 
 
 def add_to_shelf(text):
@@ -294,7 +304,7 @@ class ChickenApp(rumps.App):
         try:
             if not config.CMD_FILE.exists():
                 return
-            cmd = config.CMD_FILE.read_text().strip()
+            cmd = config.CMD_FILE.read_text(encoding="utf-8").strip()
             config.CMD_FILE.unlink()
         except Exception:
             return

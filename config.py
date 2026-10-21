@@ -96,7 +96,7 @@ def load():
     if not CONFIG_FILE.exists():
         return _merge(DEFAULTS, {})
     try:
-        user = json.loads(CONFIG_FILE.read_text())
+        user = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         if not isinstance(user, dict):
             raise ValueError("top level is not an object")
     except Exception as e:
@@ -113,7 +113,7 @@ def save(patch):
     not something a notes app should require.
     """
     try:
-        current = json.loads(CONFIG_FILE.read_text())
+        current = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         if not isinstance(current, dict):
             current = {}
     except Exception:
@@ -121,7 +121,11 @@ def save(patch):
     merged = _merge(_merge(DEFAULTS, current), patch)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = CONFIG_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(merged, indent=2, ensure_ascii=False))
+    # Explicit encoding: the locale default inside a bundle is ASCII, so a
+    # folder path or a state word in any non-Latin script would otherwise
+    # raise on save and leave the config truncated.
+    tmp.write_text(json.dumps(merged, indent=2, ensure_ascii=False),
+                   encoding="utf-8")
     tmp.replace(CONFIG_FILE)      # atomic: a crash mid-write cannot truncate it
     return merged
 
@@ -135,7 +139,8 @@ def write_default_if_missing():
     if CONFIG_FILE.exists():
         return False
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(DEFAULTS, indent=2, ensure_ascii=False))
+    CONFIG_FILE.write_text(json.dumps(DEFAULTS, indent=2, ensure_ascii=False),
+                           encoding="utf-8")
     return True
 
 
