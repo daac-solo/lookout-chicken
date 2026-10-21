@@ -40,6 +40,33 @@ _cache = {"key": None, "at": 0.0, "value": None}
 _FM = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.S)
 _KV = re.compile(r"^([A-Za-z_][\w-]*)\s*:\s*(.*)$")
 _H1 = re.compile(r"^#\s+(.+)$", re.M)
+# Logseq writes `key:: value` at the top of a page instead of YAML. Claiming
+# Logseq support without this would be a lie, and the cost is one more regex.
+_LSQ = re.compile(r"^([A-Za-z_][\w-]*)::\s*(.*)$")
+# Logseq wraps dates and references in [[...]]; the value is what is inside.
+_LINK = re.compile(r"^\[\[(.*)\]\]$")
+
+
+def _logseq_properties(text):
+    """Read the leading `key:: value` block, which is where Logseq keeps what
+    YAML frontmatter holds elsewhere. Stops at the first line that is not a
+    property, so page content is never scanned."""
+    out = {}
+    for line in (text or "").splitlines():
+        if not line.strip():
+            if out:
+                break
+            continue
+        m = _LSQ.match(line.strip())
+        if not m:
+            break
+        key, raw = m.group(1).strip().lower(), m.group(2).strip()
+        link = _LINK.match(raw)
+        if link:
+            raw = link.group(1).strip()
+        if raw:
+            out[key] = raw
+    return out
 
 
 def _unquote(v):
@@ -60,7 +87,7 @@ def parse_frontmatter(text):
     out = {}
     m = _FM.match(text or "")
     if not m:
-        return out
+        return _logseq_properties(text)
     for line in m.group(1).splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
@@ -145,7 +172,7 @@ def _walk(root, ignore):
         dirnames[:] = [d for d in dirnames
                        if not d.startswith(".") and d not in ignore]
         for name in filenames:
-            if name.startswith(".") or not name.lower().endswith(".md"):
+            if name.startswith(".") or not name.lower().endswith((".md", ".markdown")):
                 continue
             yield os.path.join(dirpath, name)
 

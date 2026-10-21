@@ -15,6 +15,7 @@ clicking through another:
   ball    a small draggable chick that idles with a breathing animation
 """
 
+import os
 import random
 from urllib.parse import quote
 
@@ -140,9 +141,22 @@ def _label(text, size, color, weight=AppKit.NSFontWeightRegular, serif=False):
     return f
 
 
+_LOGO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo")
+
+
 def _res(name, ext="png"):
-    """Bundle resource, or None when running straight from source."""
-    return AppKit.NSBundle.mainBundle().pathForResource_ofType_(name, ext)
+    """The artwork, from the bundle when there is one and from the repo's
+    logo/ folder when running straight from source.
+
+    Without the source fallback the chick silently degrades to an emoji
+    before the first build, which reads as "this is what it looks like"
+    rather than "the bundle is missing".
+    """
+    path = AppKit.NSBundle.mainBundle().pathForResource_ofType_(name, ext)
+    if path:
+        return path
+    local = os.path.join(_LOGO_DIR, f"{name}.{ext}")
+    return local if os.path.exists(local) else None
 
 
 class KeyPanel(AppKit.NSPanel):

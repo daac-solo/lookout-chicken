@@ -13,10 +13,43 @@ So: a small creature that lives outside the vault and keeps one number in
 front of you, so the piece you finished in June does not quietly become the
 piece you finished last year.
 
-It reads a plain folder of markdown with YAML frontmatter — what Obsidian,
-Logseq, Foam, Bear exports and a dozen others already write to disk. No
-plugin, no sync, no account, no index to rebuild. **It only reads your
-files. It never writes to them.**
+It reads a plain folder of markdown — no plugin, no sync, no account, no
+index to rebuild. **It only reads your files. It never writes to them.**
+
+## What it needs from your folder
+
+**No structure at all.** Point it at a directory and it walks everything
+beneath: flat, nested, one folder per year, Obsidian's vault layout, Logseq's
+`pages/` and `journals/` — all the same to it. Dotfolders like `.obsidian`
+and `.git` are skipped, and you can name others to ignore.
+
+What it does need is **one line per note saying the work is finished**, in
+either of the two formats people actually use:
+
+```markdown
+---
+status: ready
+date: 2026-06-06
+---
+```
+
+```markdown
+status:: ready
+date:: [[2026-06-06]]
+```
+
+The first is YAML frontmatter (Obsidian, Foam, Quartz, Jekyll, most static
+site generators). The second is Logseq's property syntax. Files ending in
+`.md` and `.markdown` are read; everything else is ignored.
+
+`date:` is optional — without it a note still counts as finished, it just has
+no age, so it cannot be the one that has waited longest.
+
+Notes with neither are counted in the library total and nothing more. That
+includes **Bear and Apple Notes exports, which carry no properties at all** —
+they will show up as a library count with zero finished pieces until you add
+a status line to the ones you care about. Nothing is wrong when that happens;
+there is simply nothing in the files to read.
 
 ![screenshot placeholder](docs/screenshot.png)
 
