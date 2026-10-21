@@ -41,6 +41,13 @@ from strings import t
 W = 248
 PAD = 14
 INPUT_H = 46
+# Loud enough to feel the key, quiet enough to type next to someone.
+KEY_VOLUME = 0.30
+# Generated on first use into app state, not shipped as a binary asset:
+# the character is tuned by reading numbers in keysound.py rather than by
+# opening an audio editor.
+KEY_DIR = os.path.join(os.path.expanduser("~"),
+                       ".local", "share", "lookout-chicken", "keys")
 PET = 72          # collapsed size
 ISLAND_H = 30     # resting pill height
 
@@ -176,6 +183,18 @@ class Widget(NSObject):
         self.on_shelf = handlers["shelf"]
         self.on_flow = handlers["flow"]
         self.on_pick = handlers.get("pick")
+        # Loaded once: building an NSSound per keystroke would stutter.
+        self._keys = []
+        self._key_i = 0
+        try:
+            import keysound
+            for path in keysound.ensure(KEY_DIR):
+                snd = AppKit.NSSound.alloc().initWithContentsOfFile_byReference_(
+                    path, True)
+                if snd is not None:
+                    self._keys.append(snd)
+        except Exception as e:
+            print(f"key sound unavailable: {e}", flush=True)
         self.panel = None
         self.field = None
         self.note = None
@@ -1078,14 +1097,22 @@ class Widget(NSObject):
     @objc.python_method
     def tick(self):
         """A soft key sound. Quiet enough to live with, present enough that
-        writing here feels like writing somewhere."""
-        if not TYPE_SOUND:
+        writing here feels like writing somewhere.
+
+        Synthesised rather than borrowed: every system sound macOS offers is
+        a high beep with nothing underneath it, which is why the old one
+        sounded flimsy at any volume. The fix was spectral, not a level
+        change. See keysound.py.
+        """
+        if not TYPE_SOUND or not self._keys:
             return
-        snd = AppKit.NSSound.soundNamed_("Morse")
-        if snd:
-            snd.setVolume_(0.045)
-            snd.stop()
-            snd.play()
+        # Round-robin: identical repeats are what make a synthetic key sound
+        # like a machine rather than a keyboard.
+        self._key_i = (self._key_i + 1) % len(self._keys)
+        snd = self._keys[self._key_i]
+        snd.setVolume_(KEY_VOLUME)
+        snd.stop()
+        snd.play()
 
     # Enter files the thought and clears the field; nothing else moves, no
     # window opens, and whatever you were doing stays where it was.

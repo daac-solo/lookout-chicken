@@ -447,6 +447,11 @@ class ChickenApp(rumps.App):
         n = len(self.items)
         header = rumps.MenuItem(t("menu_header"))
         header.set_callback(None)
+        # The real bird rather than the emoji stand-in: this line is the
+        # closest thing the app has to an About box.
+        _chick = widget._res("chick-18")
+        if _chick:
+            header.set_icon(_chick, dimensions=(16, 16))
         entries = [
             header,
             None,

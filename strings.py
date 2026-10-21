@@ -12,7 +12,7 @@ Templates use str.format with named fields.
 
 ZH = {
     # menu
-    "menu_header": "🐔 瞭望鸡 · 替你盯着该发什么",
+    "menu_header": "瞭望鸡 · 替你盯着该发什么",
     "menu_note": "随手记一条  {key}",
     "menu_clipboard": "丢剪贴板上来",
     "menu_widget_on": "放个桌面组件",
@@ -102,7 +102,7 @@ ZH = {
 }
 
 EN = {
-    "menu_header": "🐔 Lookout Chicken · watching what you owe",
+    "menu_header": "Lookout Chicken · watching what you owe",
     "menu_note": "Jot something down  {key}",
     "menu_clipboard": "Take the clipboard",
     "menu_widget_on": "Show the widget",

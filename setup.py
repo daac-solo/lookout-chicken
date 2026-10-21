@@ -35,7 +35,11 @@ OPTIONS = {
             "Lookout Chicken uses system events for its global shortcuts.",
     },
     "packages": ["rumps", "providers"],
+    # keysound is imported inside a try block at runtime, which modulegraph
+    # does not follow — without naming it here the key sound works from
+    # source and silently vanishes in the bundle.
     "includes": ["widget", "popup", "hotkeys", "config", "strings",
+                 "keysound", "wave", "array",
                  "ApplicationServices", "Quartz"],
     # These ship with the system; bundling them bloats the app and can
     # conflict with the OS copies.
