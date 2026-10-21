@@ -317,6 +317,8 @@ class ChickenApp(rumps.App):
                     self.widget.toggle_collapsed()
             elif cmd == "show":
                 self._ensure_visible()
+            elif cmd == "pick":
+                self.pick_folder()
         except Exception:
             import traceback
             traceback.print_exc()
@@ -393,6 +395,8 @@ class ChickenApp(rumps.App):
         panel.setAllowsMultipleSelection_(False)
         panel.setPrompt_(t("pick_prompt"))
         panel.setMessage_(prompt or t("pick_message"))
+        # An accessory app has no windows of its own to bring forward, so the
+        # panel would otherwise open behind whatever you were looking at.
         AppKit.NSApp.activateIgnoringOtherApps_(True)
         if panel.runModal() != AppKit.NSModalResponseOK:
             return None

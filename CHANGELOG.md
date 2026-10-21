@@ -5,6 +5,15 @@ the day the work landed. This project follows [semantic versioning]
 (https://semver.org): until `1.0.0` the minor number moves when behaviour
 changes and the patch number when something is repaired.
 
+## [Unreleased]
+
+### Added
+
+- `pick` joins the command-file verbs, so the folder picker can be opened
+  from a launcher or a script rather than only from the menu. It is also
+  what makes the picker testable without a human clicking a menu item —
+  which is why the UI path went unverified in 0.1.0.
+
 ## [0.1.0] — 2026-10-21
 
 First release. Extracted from a personal tool and made to work on somebody

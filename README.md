@@ -228,7 +228,7 @@ the way it is.
 If you would rather not grant it at all, everything except the hotkeys still
 works: drive it from the menu bar, or write a word into
 `~/.local/share/lookout-chicken/cmd` (`note`, `island`, `ball`, `card`,
-`toggle`) from any launcher you already trust.
+`toggle`, `show`, `pick`) from any launcher you already trust.
 
 ---
 
