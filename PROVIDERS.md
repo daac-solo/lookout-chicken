@@ -99,6 +99,21 @@ The scan is cached and only repeats when the newest mtime in the tree changes,
 so pointing it at a large vault does not cost anything on every refresh. A
 path that does not exist returns zeros, not an error.
 
+## Writing (optional)
+
+A provider may also expose `capture(cfg, text, why="")`, returning
+`(ok, message)`. `message` is shown to the user on success, so make it say
+*where the note went* — that is the only thing teaching the difference
+between `Enter` (the shelf) and `⇧Enter` (your notes).
+
+`folder` implements it by writing a new file into `folder.inbox` with
+`status: <capture_state>` frontmatter, so the note it just wrote is counted
+by the next read. It never edits or deletes an existing file, and it never
+overwrites: a colliding filename gets a `-2` suffix.
+
+A provider without `capture` is read-only, and `⇧Enter` falls back to the
+local shelf rather than failing.
+
 ## Endpoints (the `http` provider)
 
 ### `GET /api/today`

@@ -231,17 +231,30 @@ class ChickenApp(rumps.App):
             self.rebuild()
 
     def _shelf_then_refresh(self, text):
+        """Enter: park it on the shelf, decide later.
+
+        The shelf is deliberately not the vault. Half of what you grab in a
+        hurry turns out not to be worth keeping, and a vault that collects
+        everything stops being a library.
+        """
         r = add_to_shelf(text)
         self.after_capture()
         return r
 
     def _send_then_refresh(self, text):
-        """Shift-Enter: straight upstream, skipping the shelf."""
-        if self.cfg.get("provider") == "http":
+        """Shift-Enter: send it where the notes live, skipping the shelf."""
+        provider = self.cfg.get("provider")
+        if provider == "http":
             from providers import http
             r = http.capture(self.cfg, text)
+        elif provider == "folder":
+            # Reading someone's vault and then saving their thoughts
+            # somewhere else builds a second inbox — the exact failure this
+            # app exists to notice.
+            from providers import folder
+            r = folder.capture(self.cfg, text)
         else:
-            # No upstream configured, so the shelf is the only honest
+            # Demo has nowhere to put it, so the shelf is the only honest
             # destination. Say so rather than pretending it went somewhere.
             r = add_to_shelf(text)
         self.after_capture()

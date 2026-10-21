@@ -14,7 +14,16 @@ front of you, so the piece you finished in June does not quietly become the
 piece you finished last year.
 
 It reads a plain folder of markdown — no plugin, no sync, no account, no
-index to rebuild. **It only reads your files. It never writes to them.**
+index to rebuild.
+
+It is also the fastest way in: `⌃⌘N` anywhere, type, Enter, and the thought
+is a markdown file in your vault before the panel has finished closing. One
+creature on both ends of the loop — what you put in, and what you never did
+anything with.
+
+**It never edits or deletes anything you wrote.** The only thing it ever
+writes is a new file, in one folder you name, when you ask it to save a
+thought. Nothing else in the vault is touched.
 
 ## What it needs from your folder
 
@@ -156,8 +165,9 @@ you care about:
 Choose it with the picker like any other folder: it is the `demo-vault`
 directory inside this repo.
 
-You should see **4 finished · oldest 136 days · 14 in library**. If you do,
-the only thing left is to change the path.
+You should see **4 finished · 14 in library**, with the oldest one well
+past a hundred days — it is dated June, so the number grows on its own. If
+you do, the only thing left is to change the path.
 
 It is also worth opening a few of those files: they are commented to show
 what the parser does and does not understand, including one note with no
@@ -239,14 +249,46 @@ something just to read it. (The card is the exception, and deliberately: it
 is already showing everything the popup would say, so hovering it does
 nothing.)
 
-### Capture never asks a question
+### It is also the door in
 
-Press `⌃⌘N` anywhere, type, press Enter. The note lands on a local shelf and
-the panel gets out of the way. There is no "which folder", no "add a tag", no
-"why are you saving this" — a capture that demands justification up front is
-a capture you skip when you are busy. The reason can come later, if it comes.
+Watching is half of it. The other half is that the same panel is the fastest
+way to get something *into* the vault it is watching.
 
-`⇧Enter` sends it straight upstream instead, when a backend is configured.
+Press `⌃⌘N` anywhere, type, press Enter. There is no "which folder", no "add
+a tag", no "why are you saving this" — a capture that demands justification
+up front is a capture you skip when you are busy. The reason can come later,
+if it comes.
+
+Two destinations, because not everything you grab deserves to be kept:
+
+| | goes to | for |
+|---|---|---|
+| `Enter` | a local shelf | the link you grabbed in a hurry, to sort later |
+| `⇧Enter` | your notes folder | the thought you already know is worth keeping |
+
+`⇧Enter` writes a real markdown file into a subfolder of your vault —
+`inbox/` unless you name another — with frontmatter the provider itself
+understands:
+
+```markdown
+---
+status: spark
+created: 2026-10-21
+---
+
+the thing you typed
+```
+
+So it comes straight back as *"3 ideas still warm"*, in the same vault, in
+your own notes app. Nothing is parked in a format only this tool can read.
+
+The shelf is deliberately **not** your vault. Half of what anyone grabs in a
+hurry turns out not to be worth keeping, and a vault that collects
+everything stops being a library — which is the failure this whole app
+exists to notice.
+
+Set `folder.inbox` to `""` to write into the top of the vault instead, and
+`folder.capture_state` to whatever word you use for a half-thought.
 
 ### It gets hungry
 

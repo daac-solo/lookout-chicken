@@ -21,6 +21,7 @@ practice and would be noise in anyone else's folder. The widget skips
 sections it has no data for, so leaving it out costs nothing.
 """
 
+import json
 import os
 import re
 import time
@@ -275,3 +276,79 @@ def fetch(cfg=None):
         # bar app is not.
         print(f"[folder] scan failed: {e}", flush=True)
         return _cache["value"] or _empty()
+
+
+# --- writing -------------------------------------------------------------
+# Reading someone's vault but saving their thoughts to a JSON file in a
+# hidden directory would be the worst of both: it builds a second inbox,
+# which is the exact problem this is supposed to notice. A capture belongs
+# in the same folder the counting comes from, in the same format.
+#
+# The promise stays narrow and worth keeping: this only ever CREATES new
+# files, inside one folder the user names. It never edits or deletes what
+# is already there.
+
+_SLUG_STRIP = re.compile(r"[^\w一-鿿\- ]+", re.U)
+
+
+def _slug(text, limit=40):
+    """A filename a human can recognise in a file list. CJK is kept as-is;
+    it is the title for a lot of people, and transliterating it would make
+    the file harder to find, not easier."""
+    first = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
+    s = _SLUG_STRIP.sub("", first).strip()
+    s = re.sub(r"[\s_]+", "-", s)[:limit].strip("-")
+    return s.lower() or "note"
+
+
+def _unique(path):
+    """Never overwrite. A capture that silently replaced yesterday's note
+    would be the one unforgivable bug in a tool pointed at a vault."""
+    if not os.path.exists(path):
+        return path
+    stem, ext = os.path.splitext(path)
+    for n in range(2, 100):
+        candidate = f"{stem}-{n}{ext}"
+        if not os.path.exists(candidate):
+            return candidate
+    return f"{stem}-{int(time.time())}{ext}"
+
+
+def capture(cfg, text, why=""):
+    """Write one note into the configured folder. Returns (ok, message)."""
+    text = (text or "").strip()
+    if not text:
+        return False, "nothing to save"
+
+    f = (cfg or {}).get("folder") or {}
+    root = os.path.expanduser(f.get("path") or "")
+    if not root or not os.path.isdir(root):
+        return False, "no notes folder set"
+
+    # A subfolder by default, so captures are easy to find and easy to
+    # ignore. Set it to "" to write into the top level of the vault.
+    sub = f.get("inbox", "inbox")
+    target_dir = os.path.join(root, sub) if sub else root
+    state = (f.get("capture_state")
+             or (f.get("spark_states") or ["spark"])[0])
+
+    today = date.today().isoformat()
+    path = _unique(os.path.join(target_dir, f"{today}-{_slug(text)}.md"))
+
+    front = [f"status: {state}", f"created: {today}"]
+    if why:
+        front.append("why: " + json.dumps(why, ensure_ascii=False))
+
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("---\n" + "\n".join(front) + "\n---\n\n" + text + "\n")
+        os.replace(tmp, path)       # atomic: no half-written note in a vault
+    except OSError as e:
+        return False, f"could not write: {e}"
+
+    # The new file changes the newest mtime, so the next read is fresh and
+    # the chick registers having been fed.
+    _cache.update({"key": None, "at": 0.0, "value": None})
+    return True, os.path.relpath(path, root)

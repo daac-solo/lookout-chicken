@@ -1118,8 +1118,13 @@ class Widget(NSObject):
                         snd.play()
                 self.pulse()
                 self.feed()
-            self.flash(t("capture_ok") if ok else t("capture_fail", err=info),
-                       ok)
+            # Say where it went. Enter and Shift-Enter have different
+            # destinations, and a confirmation that names the file is the
+            # only thing that teaches the difference — nobody reads a
+            # keyboard hint under a text field.
+            self.flash(
+                (t("capture_to", where=info) if info else t("capture_ok"))
+                if ok else t("capture_fail", err=info), ok)
             return True
 
         return False
