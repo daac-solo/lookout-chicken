@@ -1,0 +1,18 @@
+# Build artefacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Environment
+.venv/
+venv/
+.env
+
+# Local config may carry a path or a token
+config.json
+*.local.json
+
+# macOS
+.DS_Store
