@@ -66,21 +66,59 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 open dist/*.app
 ```
 
-A chick appears in the top-right of your screen, reciting sample numbers.
-That is expected: a fresh clone runs on the **demo provider** so you can see
-the thing work before configuring anything. The numbers are not yours yet.
+A chick appears in the top-right of your screen, reciting sample numbers,
+and offers to point itself at your notes. Decline and it stays on demo data
+— you can choose a folder from the menu bar whenever you like.
+
+The first command may pause while macOS installs the Xcode command line
+tools. That is a one-off, and it is Apple's prompt, not this project's.
+
+### Why there is no download link
+
+There is no prebuilt `.app` to download, and that is deliberate rather than
+unfinished.
+
+A Mac app downloaded from the internet is quarantined by Gatekeeper unless
+it has been **notarized** — and notarization requires a paid Apple Developer
+Program membership ($99/year). Without it, every person who downloaded a
+release would meet *"Apple could not verify this app is free of malware"*
+and have to be talked through overriding it. That is a poor first contact
+with a tool asking to read your notes.
+
+Building from source sidesteps this completely: an app you compiled yourself
+is never quarantined, so it simply opens. It also means **you can read what
+you are running** before you run it, which for something pointed at a
+personal vault is the better arrangement anyway.
+
+If this project ever gets enough users that compiling is the thing standing
+in their way, that is the moment to reconsider — not before.
+
+**If someone hands you a built copy** (AirDrop, a zip, a shared drive),
+macOS *will* quarantine that one. Open it the first time with right-click →
+**Open** → **Open**, or allow it under System Settings → Privacy & Security.
+After the first launch it opens normally. Applying that override to software
+from a stranger is a real decision; build it yourself if you would rather
+not make it.
 
 ---
 
 ## Point it at your own notes
 
-This is the step that makes it real. On first launch the app writes:
+This is the step that makes it real, and it does not involve a text editor.
 
-```
-~/.config/lookout-chicken/config.json
-```
+**Menu bar → Choose notes folder…** — pick the folder, and the chick reports
+what it found: how many notes, and how many of them are finished and still
+unpublished. The same offer appears by itself on first launch.
 
-Open that file and change two things — the provider, and the path:
+If it says **no markdown here**, or **notes found but none marked
+finished**, that line is a button: it reopens the picker. A zero is always
+explained rather than left to look like a broken app.
+
+### The config file, for the settings the picker does not cover
+
+Everything is stored in `~/.config/lookout-chicken/config.json`, which you
+are free to edit directly — the picker only writes `provider` and
+`folder.path`:
 
 ```json
 {
@@ -112,15 +150,8 @@ them finished and unpublished, the oldest dated June. Point the config at it
 first if you want to confirm the provider works before aiming it at anything
 you care about:
 
-```bash
-cat > ~/.config/lookout-chicken/config.json <<JSON
-{ "provider": "folder", "folder": { "path": "$PWD/demo-vault" } }
-JSON
-```
-
-(An absolute path, because a bundled `.app` does not run from this
-directory — a relative path would resolve against `/` and quietly find
-nothing.)
+Choose it with the picker like any other folder: it is the `demo-vault`
+directory inside this repo.
 
 You should see **4 finished · oldest 136 days · 14 in library**. If you do,
 the only thing left is to change the path.
@@ -311,6 +342,11 @@ note without it is counted in the library total but cannot be classified.
 `fedHoursAgo`, and only a provider that reports it can drive the mood. The
 demo provider returns a fixed value on purpose, so it is always mildly
 hungry. Switch to `folder` or report the field yourself.
+
+**macOS says it cannot verify the app.** You are running a copy someone
+sent you rather than one you built. Right-click the app → **Open** →
+**Open**, or allow it in System Settings → Privacy & Security. See
+[Why there is no download link](#why-there-is-no-download-link).
 
 **It is in the way.** Drag it anywhere by its background. `⌃⌘I` parks it
 under the notch, `⌃⌘B` shrinks it to the ball, `⌃⌘N` brings the card back.
