@@ -182,7 +182,10 @@ def _empty():
     Omitting fedHoursAgo keeps the chick neutral rather than blaming the user
     for a path that does not exist."""
     return {"ready": {"count": 0, "oldestDays": 0, "items": []},
-            "library": 0, "sparks": {"hot": 0}, "shelf": 0}
+            "library": 0, "sparks": {"hot": 0}, "shelf": 0,
+            # Lets the widget tell "nothing finished yet" apart from
+            # "this number came from somewhere else entirely".
+            "source": "folder"}
 
 
 def _scan(root, ready_states, spark_states, ignore):

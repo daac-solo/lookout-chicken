@@ -175,6 +175,7 @@ class Widget(NSObject):
         self.open_url = opener
         self.on_shelf = handlers["shelf"]
         self.on_flow = handlers["flow"]
+        self.on_pick = handlers.get("pick")
         self.panel = None
         self.field = None
         self.note = None
@@ -946,6 +947,16 @@ class Widget(NSObject):
 
         lib = data.get("library", 0)
         shelf = data.get("shelf", 0)
+
+        # Zero is ambiguous: a wrong path, a state name that does not match,
+        # and notes without frontmatter all render as 0. Say which one it is
+        # while the user can still act on it, rather than leaving them to
+        # conclude the app does not work.
+        if not n and data.get("source") == "folder":
+            lines.append((_label(
+                t("none_no_files") if not lib else t("none_no_states"),
+                11, red if not lib else second), 15, 4, "pick"))
+
         tail = t("library", n=lib)
         if shelf:
             tail += t("shelf_suffix", n=shelf)
@@ -1052,6 +1063,10 @@ class Widget(NSObject):
                 break
         if route == "collapse":
             self.toggle_collapsed()
+        elif route == "pick":
+            # The line that explains a zero is also the way out of it.
+            if self.on_pick:
+                self.on_pick()
         else:
             self.open_url(route)
 

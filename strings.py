@@ -22,6 +22,21 @@ ZH = {
     "menu_open": "打开主界面",
     "menu_ax": "⚠️ 开启快捷键权限",
     "menu_quit": "退出",
+    "menu_pick_folder": "选择笔记文件夹…",
+    "config_broken": "配置文件读不了，现在显示的是示例数据。\n{err}",
+    "none_no_files": "这个文件夹里没有 markdown 笔记 · 点我换一个",
+    "none_no_states": "读到笔记了，但没有一篇标了完成状态 · 点我看怎么标",
+    "pick_prompt": "就用这个",
+    "pick_message": "选一个装着 markdown 笔记的文件夹。只读，不会动里面的文件。",
+    "pick_done": "读到 {library} 篇笔记，其中 {ready} 篇写完没发。\n{path}",
+    "pick_none": "这个文件夹里没找到写完的笔记。\n看看 README 里「它需要你的文件夹长什么样」。",
+    "first_title": "指向你自己的笔记",
+    "first_message": ("现在显示的是示例数字。\n\n"
+                      "选一个你的 markdown 笔记文件夹，它就会开始数你自己的东西 —— "
+                      "哪几篇写完了却一直没发出去。\n\n"
+                      "只读，永远不写。"),
+    "first_ok": "选文件夹",
+    "first_skip": "先看示例",
     "menu_app_quit": "退出瞭望鸡",
 
     # edit menu
@@ -96,6 +111,21 @@ EN = {
     "menu_open": "Open dashboard",
     "menu_ax": "⚠️ Enable shortcuts",
     "menu_quit": "Quit",
+    "menu_pick_folder": "Choose notes folder…",
+    "config_broken": "Your config could not be read, so these are sample numbers.\n{err}",
+    "none_no_files": "No markdown in that folder \u00b7 tap to pick another",
+    "none_no_states": "Notes found, but none marked finished \u00b7 tap for how",
+    "pick_prompt": "Use this folder",
+    "pick_message": "Pick a folder of markdown notes. It is only read, never written to.",
+    "pick_done": "Read {library} notes, {ready} finished but unpublished.\n{path}",
+    "pick_none": "No finished notes found in that folder.\nSee \u201cWhat it needs from your folder\u201d in the README.",
+    "first_title": "Point it at your own notes",
+    "first_message": ("These are sample numbers.\n\n"
+                      "Pick a folder of markdown notes and it will start counting yours "
+                      "instead \u2014 which pieces you finished and never published.\n\n"
+                      "Read only, always."),
+    "first_ok": "Choose folder",
+    "first_skip": "Keep the demo",
     "menu_app_quit": "Quit Lookout Chicken",
 
     "edit_undo": "Undo",

@@ -84,12 +84,50 @@ def _merge(base, override):
     return out
 
 
+# Set when a config file exists but could not be read. A missing file is not
+# an error — it is a first run — but a broken one must never be mistaken for
+# one, because the fallback is demo data that looks like a working app.
+LAST_ERROR = None
+
+
 def load():
+    global LAST_ERROR
+    LAST_ERROR = None
+    if not CONFIG_FILE.exists():
+        return _merge(DEFAULTS, {})
     try:
         user = json.loads(CONFIG_FILE.read_text())
-    except Exception:
+        if not isinstance(user, dict):
+            raise ValueError("top level is not an object")
+    except Exception as e:
+        LAST_ERROR = str(e)
         user = {}
     return _merge(DEFAULTS, user)
+
+
+def save(patch):
+    """Merge a patch into the stored config and write it back.
+
+    The app configures itself through this rather than asking the user to
+    find a JSON file inside a hidden directory — which is a developer habit,
+    not something a notes app should require.
+    """
+    try:
+        current = json.loads(CONFIG_FILE.read_text())
+        if not isinstance(current, dict):
+            current = {}
+    except Exception:
+        current = {}
+    merged = _merge(_merge(DEFAULTS, current), patch)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = CONFIG_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(merged, indent=2, ensure_ascii=False))
+    tmp.replace(CONFIG_FILE)      # atomic: a crash mid-write cannot truncate it
+    return merged
+
+
+def is_first_run():
+    return not CONFIG_FILE.exists()
 
 
 def write_default_if_missing():

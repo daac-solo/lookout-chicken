@@ -22,6 +22,7 @@ import subprocess
 from datetime import datetime
 
 import AppKit
+import objc
 import rumps
 
 import config
@@ -104,7 +105,11 @@ def install_edit_menu():
 
 class ChickenApp(rumps.App):
     def __init__(self):
+        # Read before anything else writes a default file, so a genuinely
+        # first launch is still recognisable further down.
+        self._first_run = config.is_first_run()
         self.cfg = config.load()
+        self._config_error = config.LAST_ERROR
         strings.use((self.cfg.get("ui") or {}).get("language", "zh"))
 
         keys = self.cfg.get("hotkeys") or {}
@@ -127,7 +132,8 @@ class ChickenApp(rumps.App):
         self.widget = Widget.alloc().initWithOpener_handlers_(
             self.open_dashboard,
             {"shelf": self._shelf_then_refresh,
-             "flow": self._send_then_refresh})
+             "flow": self._send_then_refresh,
+             "pick": self.pick_folder})
 
         self.rebuild()
 
@@ -150,6 +156,26 @@ class ChickenApp(rumps.App):
         # The waiting-days number is the point, and it only changes slowly.
         rumps.Timer(self.refresh_widget,
                     int(ui.get("refresh_seconds", 120) or 120)).start()
+
+        # A config that exists but will not parse falls back to demo numbers,
+        # which look exactly like a working app pointed at an empty vault.
+        if self._config_error:
+            rumps.notification(
+                t("notify_title"), "", t("config_broken", err=self._config_error))
+
+        # Ask after the UI is up, so the first thing on screen is the chick
+        # rather than a dialog from an app they have not seen yet.
+        if self._first_run:
+            rumps.Timer(self._offer_setup, 1.2).start()
+
+    def _offer_setup(self, timer):
+        timer.stop()
+        try:
+            self.first_run_setup()
+            self.refresh_widget(None)
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
     # --- setup helpers ---
 
@@ -338,6 +364,70 @@ class ChickenApp(rumps.App):
         self.widget.set_collapsed(False)
         self.widget.focus_input()
 
+    # --- setup ------------------------------------------------------------
+
+    @objc.python_method
+    def choose_folder(self, prompt=None):
+        """Ask for a folder with the system panel.
+
+        The alternative is telling someone to edit JSON inside ~/.config — a
+        hidden directory Finder will not even show without a keystroke. That
+        is a developer habit, and this is a notes app.
+        """
+        panel = AppKit.NSOpenPanel.openPanel()
+        panel.setCanChooseFiles_(False)
+        panel.setCanChooseDirectories_(True)
+        panel.setAllowsMultipleSelection_(False)
+        panel.setPrompt_(t("pick_prompt"))
+        panel.setMessage_(prompt or t("pick_message"))
+        AppKit.NSApp.activateIgnoringOtherApps_(True)
+        if panel.runModal() != AppKit.NSModalResponseOK:
+            return None
+        url = panel.URL()
+        return url.path() if url else None
+
+    def pick_folder(self, _=None):
+        path = self.choose_folder()
+        if not path:
+            return
+        config.save({"provider": "folder", "folder": {"path": path}})
+        self.cfg = config.load()
+        # The provider was bound at launch from the old config; without this
+        # the picker would change the file and nothing on screen.
+        self.fetch = providers.get(self.cfg)
+        self.refresh_widget(None)
+        # Say what was found, because a number appearing silently in a corner
+        # is not an answer to "did that work".
+        data = (self.fetch() if self.fetch else {}) or {}
+        ready = (data.get("ready") or {}).get("count", 0)
+        lib = data.get("library", 0)
+        rumps.notification(
+            t("notify_title"), "",
+            t("pick_done", ready=ready, library=lib, path=path))
+
+    @objc.python_method
+    def first_run_setup(self):
+        """On a genuinely first launch, offer to point at a folder straight
+        away. Skipping is fine — demo data still runs — but the offer has to
+        come before the user concludes the sample numbers are all there is."""
+        win = rumps.Window(
+            title=t("first_title"),
+            message=t("first_message"),
+            ok=t("first_ok"),
+            cancel=t("first_skip"),
+            dimensions=(0, 0),
+        )
+        if not win.run().clicked:
+            config.save({})          # stop asking on every launch
+            return
+        path = self.choose_folder(t("pick_message"))
+        if path:
+            config.save({"provider": "folder", "folder": {"path": path}})
+        else:
+            config.save({})
+        self.cfg = config.load()
+        self.fetch = providers.get(self.cfg)
+
     # --- menu ---
 
     def rebuild(self):
@@ -360,6 +450,7 @@ class ChickenApp(rumps.App):
                 callback=self.open_shelf),
             rumps.MenuItem(t("menu_open"), callback=self.open_dashboard),
             None,
+            rumps.MenuItem(t("menu_pick_folder"), callback=self.pick_folder),
             *([] if self._trusted
               else [rumps.MenuItem(t("menu_ax"), callback=self.open_ax)]),
             rumps.MenuItem(t("menu_quit"), callback=rumps.quit_application),
@@ -430,9 +521,10 @@ class ChickenApp(rumps.App):
 
 
 def main():
-    created = config.write_default_if_missing()
-    if created:
-        print(f"wrote default config to {config.CONFIG_FILE}", flush=True)
+    # Deliberately does NOT write a default config here. Doing so made the
+    # file exist before the app could ask whether this was a first run, so
+    # the setup offer never appeared — the file is written once the user has
+    # either chosen a folder or declined.
     config.ensure_state_dir()
     print("瞭望鸡 / Lookout Chicken starting", flush=True)
     ChickenApp().run()
