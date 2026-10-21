@@ -15,6 +15,8 @@ clicking through another:
   ball    a small draggable chick that idles with a breathing animation
 """
 
+import io
+import json
 import os
 import random
 from urllib.parse import quote
@@ -67,6 +69,45 @@ ISLAND_H = 30     # resting pill height
 
 # Set from config at startup.
 TYPE_SOUND = True
+
+# Where the widget was last put. A thing that lives on your desktop should
+# stay where you left it; starting in the top-right every launch means the
+# one corner it is allowed to occupy is the one the author picked.
+POS_FILE = os.path.join(os.path.expanduser("~"),
+                        ".local", "share", "lookout-chicken", "pos.json")
+
+
+def load_pos():
+    try:
+        with io.open(POS_FILE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return float(d["x"]), float(d["y"])
+    except Exception:
+        return None
+
+
+def save_pos(x, y):
+    try:
+        os.makedirs(os.path.dirname(POS_FILE), exist_ok=True)
+        tmp = POS_FILE + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"x": float(x), "y": float(y)}, fh)
+        os.replace(tmp, POS_FILE)
+    except Exception:
+        pass
+
+
+def on_screen(x, y, w, h):
+    """Keep a saved position reachable. Monitors come and go, and a point
+    that was on a second display last week is off the edge of the world
+    today — a widget you cannot see is a widget you cannot move back."""
+    for sc in AppKit.NSScreen.screens():
+        vf = sc.visibleFrame()
+        if (x + w > vf.origin.x + 40 and x < vf.origin.x + vf.size.width - 40
+                and y + h > vf.origin.y + 20
+                and y < vf.origin.y + vf.size.height - 20):
+            return True
+    return False
 HINT_KEY = "⌃⌘N"
 
 
@@ -196,6 +237,54 @@ def _res(name, ext="png"):
     return local if os.path.exists(local) else None
 
 
+class DragView(AppKit.NSView):
+    """The panel's background, made draggable.
+
+    setMovableByWindowBackground_ never fired: the glass effect view fills
+    the panel and consumes the mouseDown before the window sees it.
+
+    The drag starts on the first mouseDragged, not on mouseDown. Clicks
+    here are delivered by NSClickGestureRecognizer — tapping the ball to
+    expand it, tapping a row to open it — and performWindowDragWithEvent_
+    swallows the event it is given, so claiming mouseDown would have traded
+    every tap for a drag that never moved anything.
+    """
+
+    def initWithFrame_(self, frame):
+        self = objc.super(DragView, self).initWithFrame_(frame)
+        if self is not None:
+            self.on_moved = None
+            self.on_move_start = None
+            self.dragging = False
+        return self
+
+    # A desktop widget should be draggable without first clicking to
+    # activate the app it belongs to.
+    def acceptsFirstMouse_(self, _event):
+        return True
+
+    def mouseDown_(self, event):
+        self.dragging = False
+        objc.super(DragView, self).mouseDown_(event)
+
+    def mouseDragged_(self, event):
+        win = self.window()
+        if win is None or self.dragging:
+            return
+        if hasattr(win, "performWindowDragWithEvent_"):
+            self.dragging = True
+            start = getattr(self, "on_move_start", None)
+            if start:
+                start()
+            win.performWindowDragWithEvent_(event)
+            # performWindowDragWithEvent_ returns when the drag ends, so by
+            # here the window is where it was dropped.
+            self.dragging = False
+            cb = getattr(self, "on_moved", None)
+            if cb:
+                cb()
+
+
 class KeyPanel(AppKit.NSPanel):
     """Borderless panels refuse key status by default, which leaves any text
     field inside them untypable."""
@@ -268,9 +357,13 @@ class Widget(NSObject):
     def build(self):
         screen = AppKit.NSScreen.mainScreen()
         vf = screen.visibleFrame()
-        # Top-right of the desktop, clear of the menu bar.
+        # Top-right of the desktop, clear of the menu bar — the default,
+        # used only until you move it somewhere you actually want it.
         x = vf.origin.x + vf.size.width - W - 24
         y = vf.origin.y + vf.size.height - 220
+        saved = load_pos()
+        if saved and on_screen(saved[0], saved[1], W, 200):
+            x, y = saved
 
         panel = KeyPanel.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(x, y, W, 200),
@@ -327,7 +420,7 @@ class Widget(NSObject):
             self.glass = False
         panel.setContentView_(blur)
 
-        sheet = AppKit.NSView.alloc().initWithFrame_(NSMakeRect(0, 0, W, 200))
+        sheet = DragView.alloc().initWithFrame_(NSMakeRect(0, 0, W, 200))
         sheet.setWantsLayer_(True)
         sheet.layer().setBackgroundColor_(
             PAPER_SOLID.colorWithAlphaComponent_(0.90).CGColor())
@@ -343,6 +436,9 @@ class Widget(NSObject):
         self.panel = panel
         self.body = blur
         self.sheet = sheet
+        self.moving = False
+        sheet.on_move_start = self.begin_move
+        sheet.on_moved = self.remember_pos
         self.stats = stats
 
     @objc.python_method
@@ -511,6 +607,42 @@ class Widget(NSObject):
         self.panel.orderFront_(None)
 
     @objc.python_method
+    def begin_move(self):
+        """A drag is one intent; the hover panel is an answer to a
+        different one. Put it away and keep it away until the pointer
+        leaves, so it does not snap back under the cursor on mouseUp."""
+        self.moving = True
+        try:
+            self.popup.hide()
+        except Exception:
+            pass
+        for t in ("_dwell", "_leave"):
+            tm = getattr(self, t, None)
+            if tm is not None:
+                tm.invalidate()
+                setattr(self, t, None)
+
+    @objc.python_method
+    def end_move(self):
+        self.moving = False
+        # The pointer is still inside, so _hover_tick would see no
+        # transition and never re-arm. Say it is outside; the next tick
+        # that finds it inside counts as an entry.
+        self._in_panel = False
+        self._in_chick = False
+
+    @objc.python_method
+    def remember_pos(self):
+        """Called after a drag. Parked under the notch the position is
+        derived from the notch, so saving it there would pin the widget to
+        a place you never chose."""
+        self.end_move()
+        if getattr(self, "parked", False):
+            return
+        f = self.panel.frame()
+        save_pos(f.origin.x, f.origin.y)
+
+    @objc.python_method
     def unpark(self):
         """Back to an ordinary floating panel, clear of the menu bar."""
         if not getattr(self, "parked", False):
@@ -538,6 +670,10 @@ class Widget(NSObject):
         screen = AppKit.NSScreen.mainScreen()
         vf = screen.visibleFrame()
         f = self.panel.frame()
+        saved = load_pos()
+        if saved and on_screen(saved[0], saved[1], f.size.width, f.size.height):
+            self.panel.setFrameOrigin_(AppKit.NSMakePoint(saved[0], saved[1]))
+            return
         top = vf.origin.y + vf.size.height
         if f.origin.y + f.size.height > top:
             self.panel.setFrameOrigin_(
@@ -1093,6 +1229,8 @@ class Widget(NSObject):
     @objc.python_method
     def _hover_tick(self):
         if self.panel is None or not self.panel.isVisible():
+            return
+        if getattr(self, "moving", False):
             return
         p = AppKit.NSEvent.mouseLocation()
         pf = self.panel.frame()
