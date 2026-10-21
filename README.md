@@ -266,18 +266,40 @@ Two destinations, because not everything you grab deserves to be kept:
 | `Enter` | a local shelf | the link you grabbed in a hurry, to sort later |
 | `⇧Enter` | your notes folder | the thought you already know is worth keeping |
 
-`⇧Enter` writes a real markdown file into a subfolder of your vault —
-`inbox/` unless you name another — with frontmatter the provider itself
-understands:
+`⇧Enter` writes one markdown file per capture into a subfolder of your
+vault — `inbox/` unless you name another — with frontmatter the provider
+itself reads back:
+
+```
+your-vault/
+├── inbox/
+│   ├── 2026-10-21-tools-are-not-neutral.md
+│   ├── 2026-10-21-example.com.md
+│   └── 2026-10-21-worth-reading.md
+├── notes/
+└── drafts/
+```
+
+The name is the date plus what you typed. Paste a link and the address goes
+to `source:` instead of into the filename — a URL run through a slugifier
+becomes `httpsexamplecomsome-article`, which helps nobody — so a bare link
+is filed under its host, and a link with a thought beside it is filed under
+the thought.
 
 ```markdown
 ---
 status: spark
 created: 2026-10-21
+source: https://example.com/x
 ---
 
-the thing you typed
+https://example.com/x a genuinely new angle on PKM
 ```
+
+They sit flat in one folder rather than in date subfolders, because a
+capture you have to navigate to is one you stop making. If that folder gets
+crowded enough to bother you, that is your cue to process it — which is the
+whole point.
 
 So it comes straight back as *"3 ideas still warm"*, in the same vault, in
 your own notes app. Nothing is parked in a format only this tool can read.

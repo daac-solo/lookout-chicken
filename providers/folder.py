@@ -289,6 +289,29 @@ def fetch(cfg=None):
 # is already there.
 
 _SLUG_STRIP = re.compile(r"[^\w一-鿿\- ]+", re.U)
+_URL = re.compile(r"https?://[^\s]+", re.I)
+
+
+def split_link(text):
+    """Separate a pasted link from whatever was typed around it.
+
+    Grabbing a link is the most common capture there is, and running a URL
+    through a slugifier produces `httpsexamplecomsome-article` — a filename
+    that helps nobody. The address belongs in frontmatter, where it stays
+    clickable and queryable; the words around it are the title.
+    """
+    m = _URL.search(text or "")
+    if not m:
+        return "", (text or "").strip()
+    url = m.group(0).rstrip(".,;)")
+    rest = (text[:m.start()] + " " + text[m.end():]).strip()
+    return url, rest
+
+
+def _host(url):
+    """example.com from a URL, without pulling in a parser for it."""
+    h = re.sub(r"^https?://", "", url, flags=re.I).split("/")[0]
+    return h.split(":")[0].lstrip("www.") or "link"
 
 
 def _slug(text, limit=40):
@@ -332,10 +355,17 @@ def capture(cfg, text, why=""):
     state = (f.get("capture_state")
              or (f.get("spark_states") or ["spark"])[0])
 
+    url, rest = split_link(text)
+    # The words you typed name the file; a bare link falls back to its host,
+    # which is still something you can recognise in a file list.
+    name = _slug(rest) if rest else (_host(url) if url else "note")
+
     today = date.today().isoformat()
-    path = _unique(os.path.join(target_dir, f"{today}-{_slug(text)}.md"))
+    path = _unique(os.path.join(target_dir, f"{today}-{name}.md"))
 
     front = [f"status: {state}", f"created: {today}"]
+    if url:
+        front.append(f"source: {url}")
     if why:
         front.append("why: " + json.dumps(why, ensure_ascii=False))
 
