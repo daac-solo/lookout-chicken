@@ -43,6 +43,18 @@ PAD = 14
 INPUT_H = 46
 # Loud enough to feel the key, quiet enough to type next to someone.
 KEY_VOLUME = 0.30
+# The pad starts here and grows with what is in it, up to a ceiling. A
+# fixed height only moves the cramping further down the page.
+PAD_H = 96
+PAD_MAX_H = 430
+# Writing long in a 248pt column means about a dozen characters a line.
+# That is not a narrow editor, it is a form field with ambitions, so the
+# whole panel widens too — the measure is the point of an editor.
+PAD_W = 460
+# A thought crosses into being a note somewhere around here. Short enough
+# that it happens before you notice you are cramped, long enough that a
+# normal one-line capture never triggers it.
+EXPAND_AT = 38
 ERROR_LOG = os.path.join(os.path.expanduser("~"),
                          ".local", "share", "lookout-chicken", "error.log")
 # Generated on first use into app state, not shipped as a binary asset:
@@ -206,6 +218,11 @@ class Widget(NSObject):
         self._key_i = 0
         self._grains_snd = []
         self._grain_i = 0
+        # One line until what is being written is no longer one line.
+        self.expanded = False
+        self.pad_h = PAD_H
+        self.textview = None
+        self._parked = None
         try:
             import keysound
             for path in keysound.ensure_grain(KEY_DIR):
@@ -1281,19 +1298,63 @@ class Widget(NSObject):
         lines.append((_label(tail, 11, tertiary), 14, 2, "#focus"))
         lines.append((_label(t("collapse"), 11, tertiary), 13, 0, "collapse"))
 
-        total = PAD * 2 + INPUT_H + 12 + sum(h + g for _, h, g, _r in lines)
+        field_h = self.pad_h if self.expanded else INPUT_H
+        # Wider while writing. A 248pt column at reading size holds about a
+        # dozen characters a line, which is not a narrow editor but a form
+        # field; the measure is most of what an editor is.
+        w = PAD_W if self.expanded else W
+        total = (PAD * 2 + field_h + 12 + (20 if self.expanded else 0)
+                 + sum(h + g for _, h, g, _r in lines))
         f = self.panel.frame()
-        # Grow downward from a fixed top edge so the widget never drifts.
-        self.panel.setFrame_display_(
-            NSMakeRect(f.origin.x, f.origin.y + f.size.height - total,
-                       W, total), True)
-        self.body.setFrame_(NSMakeRect(0, 0, W, total))
-        self.sheet.setFrame_(NSMakeRect(0, 0, W, total))
+        try:
+            vis = (self.panel.screen() or AppKit.NSScreen.mainScreen()).visibleFrame()
+        except Exception:
+            vis = None
+
+        if self.expanded:
+            # Writing is not what the corner of a desk is for. The pad comes
+            # to the middle and grows out from there — left, right, up and
+            # down at once — so the text stays where the eye already is.
+            if self._parked is None:
+                self._parked = (f.origin.x, f.origin.y + f.size.height)
+            if vis is not None:
+                x = vis.origin.x + (vis.size.width - w) / 2.0
+                y = vis.origin.y + (vis.size.height - total) / 2.0 + 40
+            else:
+                x, y = f.origin.x, f.origin.y
+        else:
+            # Back to where it was parked, measured from the top edge so it
+            # does not creep down the screen across captures.
+            if self._parked is not None:
+                px, ptop = self._parked
+                self._parked = None
+                x, y = px, ptop - total
+            else:
+                x = f.origin.x
+                y = f.origin.y + f.size.height - total
+
+        if vis is not None:
+            x = max(vis.origin.x + 6,
+                    min(x, vis.origin.x + vis.size.width - w - 6))
+            y = max(vis.origin.y + 6,
+                    min(y, vis.origin.y + vis.size.height - total - 6))
+        self.panel.setFrame_display_(NSMakeRect(x, y, w, total), True)
+        self.body.setFrame_(NSMakeRect(0, 0, w, total))
+        self.sheet.setFrame_(NSMakeRect(0, 0, w, total))
+
+        self.textview = None
+        if self.expanded:
+            # Past a certain length a text field is the wrong control: it
+            # does not scroll, so it clips, and because the editor follows
+            # the caret the clipped part is the beginning of what you wrote.
+            self.build_pad(total, field_h, w)
+            self._after_input_box(total, field_h, w, lines)
+            return
 
         # A capture field that is always visible costs nothing to use. Having
         # to open something first is the interruption worth removing.
         field = AppKit.NSTextField.alloc().initWithFrame_(
-            NSMakeRect(PAD, total - PAD - INPUT_H, W - PAD * 2, INPUT_H))
+            NSMakeRect(PAD, total - PAD - INPUT_H, w - PAD * 2, INPUT_H))
         # A rounded face at reading size, on warm paper rather than system
         # grey: the field should feel like somewhere you write.
         field.setFont_(_round_cjk(15))
@@ -1317,7 +1378,20 @@ class Widget(NSObject):
         field.setStringValue_(self.note or "")
         self.sheet.addSubview_(field)
         self.field = field
-        self.stats.setFrame_(NSMakeRect(0, 0, W, total - PAD - INPUT_H - 6))
+
+        # Visible, because a modifier nobody is shown is a feature nobody
+        # has. Quiet, because the short note is still the common case.
+        grow = _label("⤢", 12, FAINT)
+        grow.setFrame_(NSMakeRect(w - PAD - 16, total - PAD - INPUT_H + 8,
+                                  16, 16))
+        grow.setToolTip_(t("expand_tip"))
+        tap = AppKit.NSClickGestureRecognizer.alloc().initWithTarget_action_(
+            self, "expandClicked:")
+        grow.addGestureRecognizer_(tap)
+        self.sheet.addSubview_(grow)
+        # Leave the hint its own strip, or it lands on the first stat line.
+        gap = 20 if self.expanded else 6
+        self.stats.setFrame_(NSMakeRect(0, 0, w, total - PAD - field_h - gap))
 
         # Recompute the window shadow against the new rounded shape.
         self.panel.invalidateShadow()
@@ -1326,7 +1400,7 @@ class Widget(NSObject):
         self.targets = []
         for view, h, gap, route in lines:
             y -= h
-            view.setFrame_(NSMakeRect(PAD, y, W - PAD * 2, h))
+            view.setFrame_(NSMakeRect(PAD, y, w - PAD * 2, h))
             self.stats.addSubview_(view)
             # Generous hit band: these lines are small and the pointer is not.
             self.targets.append((y - gap / 2, y + h + 2, route))
@@ -1346,7 +1420,7 @@ class Widget(NSObject):
         if img is not None:
             side = 36
             iv = AppKit.NSImageView.alloc().initWithFrame_(
-                NSMakeRect(W - side - 13, 11, side, side))
+                NSMakeRect(w - side - 13, 11, side, side))
             iv.setImage_(img)
             iv.setImageScaling_(AppKit.NSImageScaleProportionallyUpOrDown)
             iv.setWantsLayer_(True)
@@ -1424,6 +1498,27 @@ class Widget(NSObject):
             self.panel.makeFirstResponder_(None)
             return True
 
+        # Option-Return opens the pad on purpose, before anything is typed.
+        # Without it the only way in is to write past a threshold — and here
+        # Return saves, so you cannot even make a line break to get there.
+        if name in ("insertNewlineIgnoringFieldEditor:",
+                    "insertLineBreak:") and not self.expanded:
+            self.open_pad()
+            return True
+        if name == "insertNewline:" and not self.expanded:
+            if AppKit.NSEvent.modifierFlags() & AppKit.NSEventModifierFlagOption:
+                self.open_pad()
+                return True
+        # In the pad, Return is a paragraph break. Leaving it as "save" is a
+        # trap: you press it to start a line and half a note leaves.
+        if name == "insertNewline:" and self.expanded:
+            mods = AppKit.NSEvent.modifierFlags()
+            if not (mods & (AppKit.NSEventModifierFlagCommand
+                            | AppKit.NSEventModifierFlagShift)):
+                view.insertNewlineIgnoringFieldEditor_(None)
+                self.tick()
+                return True
+
         if name == "insertNewline:":
             # PyObjC swallows exceptions raised inside a delegate method, so
             # anything that goes wrong in here looks exactly like Enter not
@@ -1446,13 +1541,13 @@ class Widget(NSObject):
 
     @objc.python_method
     def submit(self):
-        text = self.field.stringValue().strip()
+        text = self.pad_text().strip()
         if not text:
             return True
         shift = (AppKit.NSEvent.modifierFlags()
                  & AppKit.NSEventModifierFlagShift) != 0
         ok, info = (self.on_flow(text) if shift else self.on_shelf(text))
-        self.field.setStringValue_("")
+        self.set_pad_text("")
         self.note = ""
         # A fresh invitation each time, so the next thought meets a
         # slightly different door.
@@ -1482,8 +1577,264 @@ class Widget(NSObject):
             lambda tm: self.field and self.field.setPlaceholderString_(
                 self.prompt))
 
+    # --- one text, two controls ------------------------------------------
+    # Collapsed it is an NSTextField, expanded an NSTextView. Everything
+    # else should not have to know which.
+
+    @objc.python_method
+    def pad_text(self):
+        if self.textview is not None:
+            return str(self.textview.string())
+        if self.field is not None:
+            return str(self.field.stringValue())
+        return ""
+
+    @objc.python_method
+    def set_pad_text(self, t):
+        if self.textview is not None:
+            self.textview.setString_(t)
+        elif self.field is not None:
+            self.field.setStringValue_(t)
+
+    # NSTextView's delegate names differ from NSTextField's.
+    def textDidChange_(self, note):
+        self.tick()
+        self.maybe_expand()
+
+    def textView_doCommandBySelector_(self, view, selector):
+        name = selector.name() if hasattr(selector, "name") else str(selector)
+        if name == "insertNewline:":
+            mods = AppKit.NSEvent.modifierFlags()
+            if mods & (AppKit.NSEventModifierFlagCommand
+                       | AppKit.NSEventModifierFlagShift):
+                try:
+                    return self.submit()
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    try:
+                        with open(ERROR_LOG, "a", encoding="utf-8") as fh:
+                            fh.write(traceback.format_exc() + "\n")
+                    except OSError:
+                        pass
+                    self.flash(f"出错了：{type(e).__name__}", False)
+                    return True
+            return False          # a plain Return is a paragraph break
+        if name == "cancelOperation:":
+            self.set_pad_text("")
+            self.note = ""
+            self.collapse_pad()
+            return True
+        return False
+
+    @objc.python_method
+    def wanted_pad_h(self, text):
+        """How tall the pad needs to be for this text, measured not guessed.
+
+        Wrapped CJK and Latin fill a line at different rates, so a
+        characters-per-line estimate is wrong for every real note.
+        """
+        try:
+            attrs = {AppKit.NSFontAttributeName: _round_cjk(15)}
+            # Measure at the width the text will actually be laid out in.
+            # Measuring the wide pad against the narrow column asked how
+            # many lines this needs at 206pt and then gave it that height at
+            # 432pt — which is where all the empty space came from.
+            box = AppKit.NSString.stringWithString_(text or " ") \
+                .boundingRectWithSize_options_attributes_(
+                    AppKit.NSMakeSize(PAD_W - PAD * 2 - 14, 10000),
+                    AppKit.NSStringDrawingUsesLineFragmentOrigin,
+                    attrs)
+            h = float(box.size.height) + 18
+        except Exception:
+            h = PAD_H
+        return max(PAD_H, min(h, PAD_MAX_H))
+
+    @objc.python_method
+    def maybe_expand(self):
+        """Grow into a writing pad once this stops being one line.
+
+        The one-line field is right for the capture it was built for: a
+        sentence, Enter, gone. It is wrong the moment you are actually
+        writing something, and asking you to decide in advance which one
+        this is would put a choice in front of the thing meant to have none.
+        So it decides from what you have typed.
+        """
+        if self.field is None and self.textview is None:
+            return
+        text = self.pad_text()
+        if not self.expanded:
+            if len(text) < EXPAND_AT and "\n" not in text:
+                return
+            self.expanded = True
+        else:
+            # Already a pad: only re-render when it actually needs another
+            # line, not on every keystroke.
+            want = self.wanted_pad_h(text)
+            if abs(want - self.pad_h) < 10:
+                return
+            self.pad_h = want
+            self.note = text
+            self.render(self.last_data)
+            self._restore_caret(text)
+            return
+        self.pad_h = self.wanted_pad_h(text)
+        self.note = text
+        self.render(self.last_data)
+        self._restore_caret(text)
+
+    @objc.python_method
+    def _restore_caret(self, text):
+        if self.textview is not None:
+            self.panel.makeFirstResponder_(self.textview)
+            self.textview.setSelectedRange_(AppKit.NSMakeRange(len(text), 0))
+            return
+        """Re-rendering rebuilds the field, so put the caret back at the end.
+        Without this, growing the pad would drop you at character zero."""
+        if self.field is None:
+            return
+        self.panel.makeFirstResponder_(self.field)
+        ed = self.panel.fieldEditor_forObject_(True, self.field)
+        if ed is not None:
+            ed.setSelectedRange_(AppKit.NSMakeRange(len(text), 0))
+
+    @objc.python_method
+    def open_pad(self):
+        """Become the editor now, whatever is or is not written yet."""
+        if self.expanded:
+            return
+        self.note = self.pad_text()
+        self.expanded = True
+        self.pad_h = self.wanted_pad_h(self.note)
+        self.render(self.last_data)
+        self._restore_caret(self.note)
+
+    def expandClicked_(self, _):
+        self.open_pad()
+
+    @objc.python_method
+    def collapse_pad(self):
+        if not self.expanded:
+            return
+        self.expanded = False
+        self.pad_h = PAD_H
+        self.render(self.last_data)
+
+    @objc.python_method
+    def build_pad(self, total, field_h, w):
+        """The writing surface: an NSTextView in a scroller."""
+        rect = NSMakeRect(PAD, total - PAD - field_h, w - PAD * 2, field_h)
+        scroll = AppKit.NSScrollView.alloc().initWithFrame_(rect)
+        scroll.setHasVerticalScroller_(True)
+        scroll.setAutohidesScrollers_(True)
+        scroll.setBorderType_(AppKit.NSNoBorder)
+        scroll.setDrawsBackground_(True)
+        scroll.setBackgroundColor_(_c(0.995, 0.985, 0.962, 0.96))
+        scroll.setWantsLayer_(True)
+        scroll.layer().setCornerRadius_(9)
+        scroll.layer().setBorderWidth_(1.0)
+        scroll.layer().setBorderColor_(GOLD.colorWithAlphaComponent_(0.42).CGColor())
+        scroll.layer().setMasksToBounds_(True)
+
+        tv = AppKit.NSTextView.alloc().initWithFrame_(
+            NSMakeRect(0, 0, rect.size.width, rect.size.height))
+        tv.setMinSize_(AppKit.NSMakeSize(0, 0))
+        tv.setMaxSize_(AppKit.NSMakeSize(1e7, 1e7))
+        tv.setVerticallyResizable_(True)
+        tv.setHorizontallyResizable_(False)
+        tv.setAutoresizingMask_(AppKit.NSViewWidthSizable)
+        tv.textContainer().setWidthTracksTextView_(True)
+        tv.textContainer().setContainerSize_(
+            AppKit.NSMakeSize(rect.size.width, 1e7))
+        tv.setFont_(_round_cjk(15))
+        tv.setTextColor_(INK)
+        tv.setDrawsBackground_(False)
+        tv.setTextContainerInset_(AppKit.NSMakeSize(7, 8))
+        try:
+            tv.setInsertionPointColor_(ALERT)
+        except Exception:
+            pass
+        tv.setDelegate_(self)
+        tv.setString_(self.note or "")
+        scroll.setDocumentView_(tv)
+        self.sheet.addSubview_(scroll)
+        self.field = None
+        self.textview = tv
+        self.panel.makeFirstResponder_(tv)
+        tv.setSelectedRange_(AppKit.NSMakeRange(len(self.note or ""), 0))
+
+    @objc.python_method
+    def _after_input_box(self, total, field_h, w, lines):
+        if self.expanded:
+            # Two destinations, named. A modifier nobody is told about is a
+            # feature nobody has.
+            keys = _label(t("pad_keys"), 10, FAINT)
+            keys.setFrame_(NSMakeRect(PAD + 2, total - PAD - field_h - 16,
+                                      w - PAD * 2, 13))
+            self.sheet.addSubview_(keys)
+
+        # Leave the hint its own strip, or it lands on the first stat line.
+        gap = 20 if self.expanded else 6
+        self.stats.setFrame_(NSMakeRect(0, 0, w, total - PAD - field_h - gap))
+
+        # Recompute the window shadow against the new rounded shape.
+        self.panel.invalidateShadow()
+
+        y = self.stats.frame().size.height
+        self.targets = []
+        for view, h, gap, route in lines:
+            y -= h
+            view.setFrame_(NSMakeRect(PAD, y, w - PAD * 2, h))
+            self.stats.addSubview_(view)
+            # Generous hit band: these lines are small and the pointer is not.
+            self.targets.append((y - gap / 2, y + h + 2, route))
+            y -= gap
+
+        if not self.stats.gestureRecognizers():
+            click = AppKit.NSClickGestureRecognizer.alloc().initWithTarget_action_(
+                self, "clicked:")
+            self.stats.addGestureRecognizer_(click)
+
+        # It keeps you company while the card is open, down in the corner
+        # where it never covers a line you are reading.
+        self.card_chick = None
+        self.mood = "ok"
+        cp = _res("chick-72")
+        if cp:
+            img = AppKit.NSImage.alloc().initWithContentsOfFile_(cp)
+            if img is not None:
+                side = 36
+                iv = AppKit.NSImageView.alloc().initWithFrame_(
+                    NSMakeRect(w - side - 13, 11, side, side))
+                iv.setImage_(img)
+                iv.setImageScaling_(AppKit.NSImageScaleProportionallyUpOrDown)
+                iv.setWantsLayer_(True)
+                iv.setWantsLayer_(True)
+                self.sheet.addSubview_(iv)
+                self.card_chick = iv
+                self.chick_idle(iv)
+
+                for ta in list(iv.trackingAreas() or []):
+                    iv.removeTrackingArea_(ta)
+                iv.addTrackingArea_(
+                    AppKit.NSTrackingArea.alloc()
+                    .initWithRect_options_owner_userInfo_(
+                        iv.bounds(),
+                        AppKit.NSTrackingMouseEnteredAndExited
+                        | AppKit.NSTrackingActiveAlways,
+                        self, {"chick": True}))
+                tap = AppKit.NSClickGestureRecognizer.alloc()\
+                    .initWithTarget_action_(self, "chickClicked:")
+                iv.addGestureRecognizer_(tap)
+
+        # The card itself breathes. A lone corner glyph pulsing reads as a
+        # loading indicator; the whole surface rising and settling reads as
+        # something resting.
+        self.breathe_view(self.sheet)
+
     @objc.python_method
     def keep_draft(self):
         """Survive a re-render mid-sentence."""
-        if self.field:
-            self.note = self.field.stringValue()
+        t = self.pad_text()
+        if t:
+            self.note = t

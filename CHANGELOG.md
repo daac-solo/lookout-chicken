@@ -9,6 +9,15 @@ changes and the patch number when something is repaired.
 
 ### Added
 
+- **A writing pad.** The capture field grows into one once what you are
+  writing stops being a line — wider, taller, centred on the screen — and
+  `⌥⏎` or the ⤢ in the corner opens it deliberately, before anything is
+  typed. Inside it Return is a paragraph break and `⌘⏎` / `⇧⌘⏎` choose the
+  destination; a one-line field where Return saves cannot even make the
+  line break needed to reach the threshold on its own.
+
+### Added
+
 - **It walks over and eats.** Grain lands to one side, one at a time with a
   tick as each settles; the chick notices, hops over, eats them one per
   peck, says something, and hops back. Pecking on the spot read as a twitch
