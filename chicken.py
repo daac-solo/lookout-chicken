@@ -26,6 +26,7 @@ import objc
 import rumps
 
 import config
+import menubar
 import providers
 import strings
 import widget
@@ -146,6 +147,15 @@ class ChickenApp(rumps.App):
              "pick": self.pick_folder})
 
         self.rebuild()
+
+        # The bird in the menu bar reads the same mood the panel does. It is
+        # the only part of this app you see without asking, so it carries
+        # the one fact worth glancing at: whether anything is owing.
+        # rumps builds the status item inside run(), so this cannot happen
+        # here — a one-shot timer is the first moment it exists.
+        self.bird = None
+        self._bird_icon = icon
+        rumps.Timer(self._start_bird, 0.4).start()
 
         # External tools write the same file, so watch it rather than making
         # those paths talk to this process.
@@ -276,14 +286,41 @@ class ChickenApp(rumps.App):
         self.items = load_shelf()
         self._stamp = self.file_stamp()
         self.rebuild()
+        bird = getattr(self, "bird", None)
+        if bird is not None:
+            bird.flap()
         rumps.Timer(self._repaint_once, 2).start()
 
     def _repaint_once(self, timer):
         timer.stop()
+        data = self.fetch()
+        if not data:
+            return
+        # Render only what is on screen, but the mood is read from the data
+        # either way: the menu bar bird is visible whether or not the panel
+        # is, and a hidden panel is no reason for it to stop telling you.
         if self.widget.visible():
-            data = self.fetch()
-            if data:
-                self.widget.render(data)
+            self.widget.render(data)
+        self.sync_bird(data)
+
+    def _start_bird(self, timer):
+        timer.stop()
+        try:
+            item = self._nsapp.nsstatusitem
+        except AttributeError:
+            return
+        self.bird = menubar.MenuBarBird(item, self._bird_icon)
+        self.bird.start()
+        self.sync_bird()
+
+    def sync_bird(self, data=None):
+        bird = getattr(self, "bird", None)
+        if bird is None:
+            return
+        if data is not None:
+            bird.set_mood(widget.mood_for((data or {}).get("fedHoursAgo")))
+        else:
+            bird.set_mood(getattr(self.widget, "mood", "ok"))
 
     # --- polling ---
 
@@ -334,6 +371,14 @@ class ChickenApp(rumps.App):
             traceback.print_exc()
 
     def refresh_widget(self, _):
+        # This used to return early whenever the panel was hidden, which is
+        # most of the time — and the menu bar bird would then be reporting a
+        # mood from whenever you last opened the panel. Fetch either way on
+        # the configured cadence; only the drawing is conditional.
+        data = self.fetch()
+        if not data:
+            return
+        self.sync_bird(data)
         if not self.widget.visible():
             return
         # Never redraw while they are typing — losing a half-written thought
@@ -341,9 +386,7 @@ class ChickenApp(rumps.App):
         if (self.widget.field is not None
                 and self.widget.field.stringValue().strip()):
             return
-        data = self.fetch()
-        if data:
-            self.widget.render(data)
+        self.widget.render(data)
 
     # --- forms ---
 
