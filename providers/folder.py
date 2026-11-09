@@ -243,7 +243,17 @@ def _scan(root, ready_states, spark_states, ignore):
 
 
 def _cache_key(root, ignore):
-    """Cheap proxy for "did anything change": the newest mtime in the tree.
+    """Cheap proxy for "did anything change": the newest mtime in the tree,
+    plus today's date.
+
+    The date is not padding. The number this app exists to show is how many
+    days something has waited, and that is the one answer that changes while
+    nothing on disk does — a note waits precisely by not being touched. Keyed
+    on mtime alone, the count froze at whatever it was the day the app
+    launched and stayed there: a vault sitting untouched for a week kept
+    reporting the same "oldest waited N days" all week, which is exactly
+    backwards from what it is for.
+
     Walking the directory is far cheaper than opening every file."""
     newest = 0.0
     count = 0
@@ -253,7 +263,7 @@ def _cache_key(root, ignore):
             newest = max(newest, os.path.getmtime(path))
         except OSError:
             pass
-    return (count, round(newest, 3))
+    return (count, round(newest, 3), date.today().toordinal())
 
 
 def fetch(cfg=None):
